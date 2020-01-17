@@ -1,8 +1,0 @@
-nhl module structure:
-
--get play by play data, seperated by teams
--get shift data, parsed by player
--combine play by play and shift data to get +/- for TOI, Shot attempts, (more ?)
--visualize shot results
--build tabular format for shift data
--
