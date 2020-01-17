@@ -1,6 +1,6 @@
 import requests, json
 from bs4 import BeautifulSoup
-from nhl_classes import Game
+from pynhl.nhl_classes import Game,Event,Shift,Player
 
 def read_json_data(filename_to_read,is_game=True):
     '''
