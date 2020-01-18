@@ -53,6 +53,20 @@ def get_time(event):
     return int(datetime.timedelta(minutes=temp.minute, seconds=temp.second).total_seconds())
 
 
+def get_x(event):
+    """
+    Return x coordinate from event
+    """
+    return event['coordinates']['x']
+
+
+def get_y(event):
+    """
+    Return y value from event
+    """
+    return event['coordinates']['y']
+
+
 def parse_shot(event):
     """
     Parse a shot event from the NHL API game data
@@ -61,11 +75,12 @@ def parse_shot(event):
     e_type = get_type(event)
     e_player_for = get_players(event)
     e_team = get_team(event)
-    e_period = event['about']['period']  # Period of event
-    e_time = event['about']['periodTime']  # Time since the start of the period
-    e_x = event['coordinates']['x']  # x loc, (0,0) is center ice
-    e_y = event['coordinates']['y']
-
+    e_period = get_period(event)
+    e_time = get_time(event)
+    e_x = get_x(event)
+    e_y = get_y(event)
+    print(Event(e_player_for, e_team, e_type, e_period, e_time, e_x, e_y))
+    exit(1)
     return Event(e_player_for, e_team, e_type, e_period, e_time, e_x, e_y)
 
 
