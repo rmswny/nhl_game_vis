@@ -53,6 +53,13 @@ def get_time(event):
     return int(datetime.timedelta(minutes=temp.minute, seconds=temp.second).total_seconds())
 
 
+def get_score(event):
+    """
+    Adds the score at the time of the event
+    """
+    return event['about']['goals']['away'], event['about']['goals']['home']
+
+
 def get_x(event):
     """
     Return x coordinate from event
@@ -70,18 +77,25 @@ def get_y(event):
 def parse_shot(event):
     """
     Parse a shot event from the NHL API game data
-    Appends self.events_in_game with a new Event object
     """
     e_type = get_type(event)
     e_player_for = get_players(event)
     e_team = get_team(event)
     e_period = get_period(event)
     e_time = get_time(event)
+    e_score = get_score(event)
     e_x = get_x(event)
     e_y = get_y(event)
-    print(Event(e_player_for, e_team, e_type, e_period, e_time, e_x, e_y))
-    exit(1)
-    return Event(e_player_for, e_team, e_type, e_period, e_time, e_x, e_y)
+    return Event(e_player_for, e_team, e_type, e_period, e_time, e_score, e_x, e_y)
+
+
+def parse_faceoff(event):
+    """
+    Parse a faceoff event from the NHL API game data
+    """
+    return Event(player_for=get_players(event), team=get_team(event), type_of_event=get_type(event),
+                 period=get_period(event), time=get_time(event), score=get_score(event), x_loc=get_x(event),
+                 y_loc=get_y(event))
 
 
 class Game:
@@ -95,13 +109,12 @@ class Game:
     # "Giveaway",
     # "Goal",
     # "Missed Shot",
-    # "Faceoff",
     # "Penalty",
     # "Takeaway",
     # "Blocked Shot"
     TRACKED_EVENTS = {
-        "Shot": parse_shot
-        # "Faceoff"
+        "Shot": parse_shot,
+        "Faceoff": parse_faceoff,
     }
 
     def __init__(self, json_input):
@@ -161,24 +174,5 @@ class Game:
         for event in events:
             e_type = event['result']['event']  # Type of event
             if e_type in self.TRACKED_EVENTS:
-                temp_event = self.TRACKED_EVENTS[e_type]  # Should call the function?
+                self.events_in_game.add(self.TRACKED_EVENTS[e_type](event))
         return self.events_in_game
-
-    def retrieve_penalties_in_game(self):
-        """
-        Retrieve penalties from self.events
-        """
-        pass
-
-    def retrieve_shots_in_game(self):
-        """
-        Retrieve all shots in game
-                Should we separate into missed/on-net/blocked?
-        """
-        pass
-
-    def retrieve_faceoffs_in_game(self):
-        """
-        Retrieve all faceoffs in game
-        """
-        pass
