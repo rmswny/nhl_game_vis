@@ -9,10 +9,10 @@ def read_json_data(filename_to_read,is_game=True):
     where each file is suffixed with the NHL GAME NUM used in the NHL API
     '''
     if is_game:
-        filename_to_read = "games/game_{}".format(filename_to_read)
+        filename_to_read = "games/game_{}.json".format(filename_to_read)
     else:
-        filename_to_read = "shifts/shift_{}".format(filename_to_read)
-    with open("games/game_{}".format(filename_to_read)) as json_file:
+        filename_to_read = "shifts/shift_{}.json".format(filename_to_read)
+    with open(filename_to_read) as json_file:
         data = json.load(json_file)
     return data
 
@@ -21,6 +21,7 @@ def save_json_data(json_data, is_game,game_num,game_dir='games/',shift_dir='shif
     Function that saves the JSON data to local dir
     Allows to ignore multiple pinging to NHL API
     '''
+    
     if is_game:
         file_name = "{}game_{}.json".format(game_dir,game_num)
     else:
@@ -46,7 +47,8 @@ if __name__ == "__main__":
     # save_json_data(game_data_json,True,NHL_GAME_NUM)
     # shift_data_json = get_json_data(NHL_SHIFT_URL)
     # save_json_data(shift_data_json,False,NHL_GAME_NUM)
-    temp = read_json_data(NHL_GAME_NUM)
+    curr_game = read_json_data(NHL_GAME_NUM)
+    Game(curr_game)
     
 
 
