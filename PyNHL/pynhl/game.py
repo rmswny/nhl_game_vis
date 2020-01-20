@@ -43,7 +43,7 @@ class Game(Event):
         self.final_score = ''
         # Functions & Variables to parse Game Data
         self.fetch_teams_from_game_data()
-        self.players_in_game = set()  # set of players
+        self.players_in_game = []
         self.retrieve_players_in_game()
         self.penalties_in_game = set()
         self.faceoffs_in_game = set()
@@ -55,6 +55,7 @@ class Game(Event):
         self.retrieve_events_in_game()
         # Functions & Variables to parse Shift data
         self.retrieve_shifts_from_game()
+        a = 5
 
     def __str__(self):
         return "{}:{}:{} v {}, score -> {}".format(self.game_id, self.game_season, self.home_team, self.away_team,
@@ -83,10 +84,11 @@ class Game(Event):
             temp_name = player_dict[player]['fullName']  # name
             # jersey number
             temp_num = player_dict[player]['primaryNumber']
-            temp_team = player_dict[player]['currentTeam']['name']  # team
+            temp_team = player_dict[player]['currentTeam']['triCode']  # team
             temp = Player(temp_name, temp_num, temp_team)
             if temp not in self.players_in_game:
-                self.players_in_game.add(temp)
+                self.players_in_game.append(temp)
+                print(temp.shifts)
         return self.players_in_game
 
     def retrieve_events_in_game(self):
@@ -106,19 +108,10 @@ class Game(Event):
         self.final_score = "{}-{}".format(temp.score[1], temp.score[0])
         return self
 
-    def parse_event(self, temp, event):
+    def add_event(self, temp):
         """
-        Parses event from NHL API
-        Functions handle edge cases for different events
+        Adds event to it's proper set based off of it's type
         """
-        temp = temp.get_players(event)
-        # TODO:Blocked shot tracks WHO blocked it, not who SHOT it Must use players in game to get other team
-        temp = temp.get_team(event)
-        temp = temp.get_period(event)
-        temp = temp.get_time(event)
-        temp = temp.get_score(event)
-        temp = temp.get_x(event)
-        temp = temp.get_y(event)
         if "Penalty" in temp.type_of_event:
             self.penalties_in_game.add(temp)
         elif "Faceoff" in temp.type_of_event:
@@ -135,11 +128,27 @@ class Game(Event):
             self.giveaways_in_game.add(temp)
         else:
             raise NotImplementedError
+        return self
+
+    def parse_event(self, temp, event):
+        """
+        Parses event from NHL API
+        Functions handle edge cases for different events
+        """
+        temp = temp.get_players(event)
+        temp = temp.get_team(event)
+        temp = temp.get_period(event)
+        temp = temp.get_time(event)
+        temp = temp.get_score(event)
+        temp = temp.get_x(event)
+        temp = temp.get_y(event)
+        self.add_event(temp)
 
     def retrieve_shifts_from_game(self):
         """
         Assign shifts in game to it's corresponding player
         """
+        # Creating shift class
         temp = Shift()
         for shifts in self.shift_json['data']:
             temp.team = shifts['teamAbbrev']
@@ -154,5 +163,13 @@ class Game(Event):
             else:
                 rel_score = score[1] - score[0]
             temp.score = rel_score
-            # Find player, add shift to their object
-            # Make sure player already has the game object
+        # Find player, add shift to their object
+        # if Player(name=temp.name, team=temp.team) in self.players_in_game:
+    # TODO: Getting the player object inside the set
+    # Make sure player already has the game object
+
+
+"""
+Does it make more sense to generate the events, shifts and the combination before generating the player list?
+Simply add events, shifts to each player hwen they are all calculated
+"""
