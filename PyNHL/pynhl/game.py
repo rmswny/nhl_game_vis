@@ -1,6 +1,6 @@
-import datetime
 from pynhl.event import Event
 from pynhl.player import Player
+from pynhl.shift import Shift
 
 NOT_TRACKED_EVENTS = {
     "Period Start",
@@ -12,43 +12,53 @@ NOT_TRACKED_EVENTS = {
     "Period Official",
     "Stoppage"
 }
+TRACKED_EVENTS = {
+    "Shot",
+    "Faceoff",
+    "Giveaway",
+    "Takeaway",
+    "Penalty",
+    "Missed Shot",
+    "Blocked Shot",
+    "Goal",
+    "Hit"
+}
 
 
-class Game:
+class Game(Event):
     # Game will have Players who will have shifts and each shift can/will have event(s)
     '''
     This class will take in a JSON DICT of game data
     And parse out the necessary data (players, events)
     Which will then be used to generate Player/Event classes
     '''
-    TRACKED_EVENTS = {
-        "Shot",
-        "Faceoff",
-        "Giveaway",
-        "Takeaway",
-        "Penalty",
-        "Missed Shot",
-        "Blocked Shot",
-        "Goal",
-        "Hit"
-    }
 
-    def __init__(self, json_input):
-        self.json_data = json_input
+    def __init__(self, game_json, shift_json):
+        self.game_json = game_json
+        self.shift_json = shift_json
+        self.game_id = game_json['gameData']['game']['pk']
+        self.game_season = game_json['gameData']['game']['season']
         self.home_team = ''
         self.away_team = ''
         self.final_score = ''
-        self.players_in_game = set()  # set of players
-        self.events_in_game = set()
-        # self.penalties_in_game = set()
-        # self.faceoffs_in_game = set()
-        # self.shots_in_game = set()
-        # self.goals_in_game = set()
-        # Functions after init
+        # Functions & Variables to parse Game Data
         self.fetch_teams_from_game_data()
+        self.players_in_game = set()  # set of players
         self.retrieve_players_in_game()
+        self.penalties_in_game = set()
+        self.faceoffs_in_game = set()
+        self.hits_in_game = set()
+        self.shots_in_game = set()
+        self.goals_in_game = set()
+        self.takeaways_in_game = set()
+        self.giveaways_in_game = set()
         self.retrieve_events_in_game()
-        print(self.events_in_game)
+        # Functions & Variables to parse Shift data
+        self.retrieve_shifts_from_game()
+
+    def __str__(self):
+        return "{}:{}:{} v {}, score -> {}".format(self.game_id, self.game_season, self.home_team, self.away_team,
+                                                   self.final_score)
 
     def fetch_teams_from_game_data(self):
         """
@@ -56,8 +66,8 @@ class Game:
         and final score
         """
         try:
-            self.away_team = self.json_data['gameData']['teams']['away']['triCode']
-            self.home_team = self.json_data['gameData']['teams']['home']['triCode']
+            self.away_team = self.game_json['gameData']['teams']['away']['triCode']
+            self.home_team = self.game_json['gameData']['teams']['home']['triCode']
             return self
         except KeyError as k:
             print(k)
@@ -67,7 +77,7 @@ class Game:
         Parse self.json_data for PLAYERS in the game
         Update self.players_in_game to be a list of [Player objects]
         """
-        player_dict = self.json_data['gameData']['players']
+        player_dict = self.game_json['gameData']['players']
         for player in player_dict:
             # Add all players from game
             temp_name = player_dict[player]['fullName']  # name
@@ -79,20 +89,70 @@ class Game:
                 self.players_in_game.add(temp)
         return self.players_in_game
 
+    def retrieve_events_in_game(self):
+        """
+        Parse self.json_data and retrieve all events reported in the game
+        Helper function for each type of event, since each have their own little quirks
+        """
+        events = self.game_json['liveData']['plays']['allPlays']
+        for event in events:
+            event_type = event['result']['event']  # Type of event
+            if event_type in TRACKED_EVENTS:
+                temp = Event(type_of_event=event_type)
+                self.parse_event(temp, event)
+            elif event_type not in NOT_TRACKED_EVENTS:
+                print(event_type)
+        # Update final score based off last event
+        self.final_score = "{}-{}".format(temp.score[1], temp.score[0])
+        return self
 
-    def parse_event(self, event):
+    def parse_event(self, temp, event):
         """
         Parses event from NHL API
         Functions handle edge cases for different events
         """
-        temp = Event
-        temp.player_for, temp.player_against = self.get_players(event)
-        # Blocked shot tracks WHO blocked it, not who SHOT it
-        # Must use players in game to get other team
-        temp.team_of_player = self.get_team(event)
-        temp.period = self.get_period(event)
-        temp.time = self.get_time(event)
-        temp.score = self.get_score(event)
-        temp.x_loc = self.get_x(event)
-        temp.y_locself.get_y(event)
-        return temp
+        temp = temp.get_players(event)
+        # TODO:Blocked shot tracks WHO blocked it, not who SHOT it Must use players in game to get other team
+        temp = temp.get_team(event)
+        temp = temp.get_period(event)
+        temp = temp.get_time(event)
+        temp = temp.get_score(event)
+        temp = temp.get_x(event)
+        temp = temp.get_y(event)
+        if "Penalty" in temp.type_of_event:
+            self.penalties_in_game.add(temp)
+        elif "Faceoff" in temp.type_of_event:
+            self.faceoffs_in_game.add(temp)
+        elif "Shot" in temp.type_of_event:
+            self.shots_in_game.add(temp)
+        elif "Goal" in temp.type_of_event:
+            self.goals_in_game.add(temp)
+        elif "Hit" in temp.type_of_event:
+            self.hits_in_game.add(temp)
+        elif "Takeaway" in temp.type_of_event:
+            self.takeaways_in_game.add(temp)
+        elif "Giveaway" in temp.type_of_event:
+            self.giveaways_in_game.add(temp)
+        else:
+            raise NotImplementedError
+
+    def retrieve_shifts_from_game(self):
+        """
+        Assign shifts in game to it's corresponding player
+        """
+        temp = Shift()
+        for shifts in self.shift_json['data']:
+            temp.team = shifts['teamAbbrev']
+            temp.name = shifts['firstName'] + " " + shifts['lastName']
+            temp.period = shifts['period']
+            temp.start = shifts['startTime']
+            temp.end = shifts['endTime']
+            temp.duration = shifts['duration']
+            score = shifts['homeScore'], shifts['visitingScore']
+            if temp.team == self.home_team:
+                rel_score = score[0] - score[1]
+            else:
+                rel_score = score[1] - score[0]
+            temp.score = rel_score
+            # Find player, add shift to their object
+            # Make sure player already has the game object

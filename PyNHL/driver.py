@@ -53,5 +53,6 @@ if __name__ == "__main__":
     # save_json_data(game_data_json,True,NHL_GAME_NUM)
     # shift_data_json = get_json_data(NHL_SHIFT_URL)
     # save_json_data(shift_data_json,False,NHL_GAME_NUM)
+    curr_game_shifts = read_json_data(NHL_GAME_NUM, is_game=False)
     curr_game = read_json_data(NHL_GAME_NUM)
-    parsed_game = Game(curr_game)
+    parsed_game = Game(curr_game, curr_game_shifts)
