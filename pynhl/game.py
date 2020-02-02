@@ -34,6 +34,7 @@ class Game(Event):
     '''
 
     def __init__(self, game_json, shift_json):
+        # Basic game information
         self.game_json = game_json
         self.shift_json = shift_json
         self.game_id = game_json['gameData']['game']['pk']
@@ -41,9 +42,10 @@ class Game(Event):
         self.home_team = ''
         self.away_team = ''
         self.final_score = ''
-        # Functions & Variables to parse Game Data
+        # Players and shifts for each game
         self.players_in_game = {}
         self.shifts_in_game = {}
+        # Events of each type
         self.penalties_in_game = []
         self.face_offs_in_game = []
         self.hits_in_game = []
@@ -51,7 +53,7 @@ class Game(Event):
         self.goals_in_game = []
         self.takeaways_in_game = []
         self.giveaways_in_game = []
-        # Functions & Variables to parse Shift data
+        # Functionality to complete the game
         self.retrieve_shifts_from_game()
         self.retrieve_events_in_game()
         self.fetch_teams_from_game_data()
@@ -179,7 +181,7 @@ class Game(Event):
             self.shifts_in_game[temp.period][temp.name].append(temp)
         return self
 
-    def was_player_on_ice(self, event, on_list, against_list, player, shifts):
+    def was_player_on_ice(self, event, player, shifts):
         """
         Helper function to determine whether or not the player was on the ice
         for an event
@@ -188,30 +190,40 @@ class Game(Event):
         """
         for shift in shifts:
             if shift.start > event.time:
+                # No need to check all shifts if the shift start is past the event
                 break
-
             if shift.start < event.time <= shift.end:
+                # Was the player on the ice
                 if player in self.players_in_game[event.team_of_player]:
-                    on_list.append(player)
+                    # + for the event
+                    event.players_on_for.append(player)
                     break
                 else:
-                    against_list.append(player)
+                    # - for the event
+                    event.players_on_against.append(player)
                     break
-        return on_list, against_list
+        return self
 
     def combine_shifts_events(self):
         """
         Create/Find player objects
         For each event, find the players on the ice for the event
-
-        self.players contains the players in this game -TODO: will have to see how to pass in/merge data after this
         """
-        for event in self.penalties_in_game:
-            temp_on_for = []
-            temp_on_against = []
+        all_events = self.penalties_in_game + self.hits_in_game + self.hits_in_game + self.goals_in_game + \
+                     self.shots_in_game + self.giveaways_in_game + self.takeaways_in_game + self.face_offs_in_game
+        for event in all_events:
             for player, shifts in self.shifts_in_game[event.period].items():
-                temp_on_for, temp_on_against = self.was_player_on_ice(event, temp_on_for, temp_on_against, player,
-                                                                      shifts)
-            # Has now added all the players to the event
-            # Need to the event to the Players event themself
+                self.was_player_on_ice(event, player, shifts)
         return self
+
+    def write_to_file(self):
+        """
+        Write schema to file
+        Iterate through each event and write to same file
+        """
+        # GameID | Event | Period | Time of event | X | Y | Score At Time Of Event | State At Time of Event |
+        # TeamOfEvent | PlayerWhoDidEvent | PlayerWhoReceivedEvent |  Players On FOR | Players On Against |
+        headers = [
+            "Game ID", "Type of Event", "Period", "Time", "X", "Y", "Score", "Strength"  # 5v5/5v4/5v3 etc
+            , "Team of Event", "Player FOR", "Player AGAINST", "Players ON FOR", "Players ON AGAINST"
+        ]

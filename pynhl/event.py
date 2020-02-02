@@ -2,11 +2,13 @@ import datetime
 
 
 class Event:
-    def __init__(self, game_id=None, player_for=None, player_against=None, team=None, type_of_event=None, period=None,
+    def __init__(self, game_id=None, players_for=None, players_against=None, team=None, type_of_event=None, period=None,
                  time=None, score=None, x_loc=None, y_loc=None):
         self.game_id = game_id
-        self.players_for = player_for
-        self.players_against = player_against
+        # Player who shot the puck, did the penalty/hit, won the faceoff, took/gave away the puck
+        self.players_for = players_for
+        # Player who saved/blocked the puck, took the hit/penalty, lost the faceoff
+        self.players_against = players_against
         self.team_of_player = team
         self.type_of_event = type_of_event
         self.period = period
@@ -14,6 +16,8 @@ class Event:
         self.x_loc = x_loc
         self.y_loc = y_loc
         self.score = score  # tuple of (away_goals,home_goals) transform to -> Tied, Leading, Trailing
+        self.players_on_for = []
+        self.players_on_against = []
         # self.state = 3v5, 4v5, 3v4, 3v3,4v4,5v5, 5v3,5v4,6v5
         # self.gwg = True/False
         # self.empty_net = True/False
@@ -46,8 +50,8 @@ class Event:
         """
         if 'Blocked' in self.type_of_event:
             # API Puts the person who blocked the shot, before the person who shot the shot
-            self.players_for, self.players_against = [event['players'][1]['player']['fullName']], \
-                                                     [event['players'][0]['player']['fullName']]
+            self.players_for = [event['players'][1]['player']['fullName']],
+            self.players_against = [event['players'][0]['player']['fullName']]
         elif "Goal" in self.type_of_event:
             self.players_for = [x['player']['fullName'] for x in event['players'] if "Goalie" not in x['playerType']]
             self.players_against = [x['player']['fullName'] for x in event['players'] if "Goalie" in x['playerType']]

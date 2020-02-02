@@ -1,6 +1,3 @@
-from pynhl.event import Event
-
-
 class Player:
     # Player will have shifts where each shift can have event(s)
     def __init__(self, name=None, jersey_num=None, team=None):
@@ -9,9 +6,10 @@ class Player:
         self.team = team
         # Each shift can have events
         self.shifts = []
-        self.events_on_ice_for = []
-        self.event_on_ice_against = []
-        self.events_involving = []
+        self.events_for = []
+        self.events_against = []
+        self.events_done = []  # EVENTS the player DID
+        self.events_received = []  # EVENTS the player received (blocked,faceoff L, hit,penalty)
 
     def __eq__(self, name):
         """
