@@ -1,7 +1,9 @@
-PyNHL/__pycache__
+iPyNHL/__pycache__
 iPyNHL/.git
 PyNHL/.idea
 PyNHL/.gitignore
 .idea
 __pycache__
+games/*
+shifts/*
 
