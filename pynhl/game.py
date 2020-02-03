@@ -1,6 +1,7 @@
 from pynhl.event import Event
 from pynhl.player import Player
 from pynhl.shift import Shift
+import bisect
 
 NOT_TRACKED_EVENTS = {
     "Period Start",
@@ -59,6 +60,9 @@ class Game(Event):
         self.fetch_teams_from_game_data()
         self.retrieve_players_in_game()
         self.combine_shifts_events()
+        # Based off number of players on the ice, determine if it's PP/PK/4v4/5v5/6v5 etc
+        # If len != 12, if != 6, if goalie isnt on ice, etc
+        b = [x for x in self.shots_in_game if len(x.players_on_against) < 6]
         a = 5
 
     def __str__(self):
@@ -142,7 +146,6 @@ class Game(Event):
             if event_type in TRACKED_EVENTS:
                 new_event = Event(type_of_event=event_type)
                 self.parse_event(new_event, event)
-                a = 5
             elif event_type not in NOT_TRACKED_EVENTS:
                 print(event_type)
         # Update final score based off last event
@@ -156,29 +159,32 @@ class Game(Event):
             score = score[1] - score[0]
         return score
 
+    def create_shift(self, shift):
+        team = shift['teamAbbrev']
+        name = "{} {}".format(shift['firstName'], shift['lastName'])
+        period = int(shift['period'])
+        shift_start = shift['startTime']
+        shift_end = shift['endTime']
+        shift_dur = shift["duration"]
+        score = self.normalize_score(team, (shift['homeScore'], shift['visitingScore']))
+        temp = Shift(game_id=self.game_id, team=team, name=name, period=period, start=shift_start, end=shift_end,
+                     duration=shift_dur,
+                     score=score)
+        return temp
+
     def retrieve_shifts_from_game(self):
         """
         Assign shifts in game to it's corresponding player
         """
         # Creating shift class
-
-        for shifts in self.shift_json['data']:
-            team = shifts['teamAbbrev']
-            name = "{} {}".format(shifts['firstName'], shifts['lastName'])
-            period = int(shifts['period'])
-            shift_start = shifts['startTime']
-            shift_end = shifts['endTime']
-            shift_dur = shifts["duration"]
-            score = self.normalize_score(team, (shifts['homeScore'], shifts['visitingScore']))
-            temp = Shift(game_id=self.game_id, team=team, name=name, period=period, start=shift_start, end=shift_end,
-                         duration=shift_dur,
-                         score=score)
+        for shift in self.shift_json['data']:
+            temp = self.create_shift(shift)
             # Shifts separated by player in game
             if temp.period not in self.shifts_in_game:
                 self.shifts_in_game[temp.period] = {}
             if temp.name not in self.shifts_in_game[temp.period]:
                 self.shifts_in_game[temp.period][temp.name] = []
-            self.shifts_in_game[temp.period][temp.name].append(temp)
+            bisect.insort(self.shifts_in_game[temp.period][temp.name], temp)
         return self
 
     def was_player_on_ice(self, event, player, shifts):

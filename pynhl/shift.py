@@ -41,8 +41,14 @@ class Shift:
     def __str__(self):
         return f"{self.name} , {self.period} , {self.start} : {self.end}"
 
-    # def __getitem__(self, item):
-    #     return
+    def __lt__(self, other):
+        if self.period == other.period:
+            return self.start < other.start
+        else:
+            return self.period < other.period
+
+    def __gt__(self, other):
+        return not (self < other)
 
     def duration_to_seconds(self):
         """
