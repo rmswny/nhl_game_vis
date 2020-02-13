@@ -2,25 +2,26 @@ import datetime
 
 
 class Event:
+    '''
+    Class handling all necessary attributes of an EVENT from the NHL Game Data API
+    '''
+
     def __init__(self, game_id=None, players_for=None, players_against=None, team=None, type_of_event=None, period=None,
                  time=None, score=None, x_loc=None, y_loc=None):
         self.game_id = game_id
-        # Player who shot the puck, did the penalty/hit, won the faceoff, took/gave away the puck
-        self.players_for = players_for
-        # Player who saved/blocked the puck, took the hit/penalty, lost the faceoff
-        self.players_against = players_against
+        self.players_involved_for = players_for  # Player who shot the puck, did the penalty/hit, won the faceoff, took/gave away the puck
+        self.players_involved_against = players_against  # Player who saved/blocked the puck, took the hit/penalty, lost the faceoff
         self.team_of_player = team
         self.type_of_event = type_of_event
         self.period = period
         self.time = time
         self.x_loc = x_loc
         self.y_loc = y_loc
-        self.score = score  # tuple of (away_goals,home_goals) transform to -> Tied, Leading, Trailing
+        self.score = score  # ([0],[1]) where 0 is the PLAYERS TEAMS SCORE
+        self.state = 0
         self.players_on_for = []
         self.players_on_against = []
-        # self.state = 3v5, 4v5, 3v4, 3v3,4v4,5v5, 5v3,5v4,6v5
-        # self.gwg = True/False
-        # self.empty_net = True/False
+        # TODO: Attributes to add later
 
     def __eq__(self, other):
         return self.type_of_event == other.type_of_event and self.period == other.type_of_event \
@@ -33,6 +34,13 @@ class Event:
         return ("Player : {}, Team: {}, Event: {}, Period: {}, Time: {}, X : {}, Y: {}".format
                 (self.player_for, self.team_of_player, self.type_of_event, self.period, self.time,
                  self.x_loc, self.y_loc))
+
+    def transform_score(self):
+        """
+        Convert tuple of (PLAYERS_TEAM_SCORE,OTHER_TEAMS_SCORE) -> -(integer) if down, 0 if tied, +(integer) if leading
+        """
+        self.score = self.score[0] - self.score[1]
+        return self
 
     def get_type(self, event):
         """
@@ -50,11 +58,13 @@ class Event:
         """
         if 'Blocked' in self.type_of_event:
             # API Puts the person who blocked the shot, before the person who shot the shot
-            self.players_for = [event['players'][1]['player']['fullName']],
-            self.players_against = [event['players'][0]['player']['fullName']]
+            self.players_involved_for = [event['players'][1]['player']['fullName']],
+            self.players_involved_against = [event['players'][0]['player']['fullName']]
         elif "Goal" in self.type_of_event:
-            self.players_for = [x['player']['fullName'] for x in event['players'] if "Goalie" not in x['playerType']]
-            self.players_against = [x['player']['fullName'] for x in event['players'] if "Goalie" in x['playerType']]
+            self.players_involved_for = [x['player']['fullName'] for x in event['players'] if
+                                         "Goalie" not in x['playerType']]
+            self.players_involved_against = [x['player']['fullName'] for x in event['players'] if
+                                             "Goalie" in x['playerType']]
         elif 'Missed' in self.type_of_event or 'Giveaway' in self.type_of_event \
                 or "Takeaway" in self.type_of_event or "Penalty" in self.type_of_event:
             # Missed shots do not a second player tracked (goalie etc)

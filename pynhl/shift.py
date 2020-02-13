@@ -42,10 +42,13 @@ class Shift:
         return f"{self.name} , {self.period} , {self.start} : {self.end}"
 
     def __lt__(self, other):
-        if self.period == other.period:
-            return self.start < other.start
+        if isinstance(other, Shift):
+            if self.period == other.period:
+                return self.start < other.start
+            else:
+                return self.period < other.period
         else:
-            return self.period < other.period
+            return self.start < other
 
     def __gt__(self, other):
         return not (self < other)

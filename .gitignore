@@ -6,4 +6,4 @@ PyNHL/.gitignore
 __pycache__
 games/*
 shifts/*
-
+*.json
