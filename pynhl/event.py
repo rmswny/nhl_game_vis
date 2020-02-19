@@ -6,22 +6,22 @@ class Event:
     Class handling all necessary attributes of an EVENT from the NHL Game Data API
     '''
 
-    def __init__(self, game_id=None, players_for=None, players_against=None, team=None, type_of_event=None, period=None,
-                 time=None, score=None, x_loc=None, y_loc=None):
-        self.game_id = game_id
-        self.players_involved_for = players_for  # Player who shot the puck, did the penalty/hit, won the faceoff, took/gave away the puck
-        self.players_involved_against = players_against  # Player who saved/blocked the puck, took the hit/penalty, lost the faceoff
-        self.team_of_player = team
-        self.type_of_event = type_of_event
-        self.period = period
-        self.time = time
-        self.x_loc = x_loc
-        self.y_loc = y_loc
-        self.score = score  # ([0],[1]) where 0 is the PLAYERS TEAMS SCORE
-        self.state = 0
+    def __init__(self, event_json):
+        self.event_json = event_json
+        # Attributes from the JSON
+        self.type_of_event = self.get_type()
+        self.players_direct_for = []
+        self.players_direct_against = []
         self.players_on_for = []
         self.players_on_against = []
-        # TODO: Attributes to add later
+        self.get_players()
+        self.team_of_player = self.get_team()
+        self.period = self.get_period()
+        self.time = self.get_time()
+        self.x_loc = self.get_x()
+        self.y_loc = self.get_y()
+        self.score = self.get_score()  # ([0],[1]) where 0 is the PLAYERS TEAMS SCORE
+        self.state = 0
 
     def __eq__(self, other):
         return self.type_of_event == other.type_of_event and self.period == other.type_of_event \
@@ -42,15 +42,15 @@ class Event:
         self.score = self.score[0] - self.score[1]
         return self
 
-    def get_type(self, event):
+    def get_type(self):
         """
         Return the type of event from NHL API
         ie "result": {"event": "Faceoff"}
         """
-        self.type_of_event = event["result"]["event"]
-        return self
+        self.type_of_event = self.event_json["result"]["event"]
+        return self.type_of_event
 
-    def get_players(self, event):
+    def get_players(self):
         """
         Return the player who DID the event
         [0] is player who did the action, [1] is the player who received the action
@@ -58,64 +58,64 @@ class Event:
         """
         if 'Blocked' in self.type_of_event:
             # API Puts the person who blocked the shot, before the person who shot the shot
-            self.players_involved_for = [event['players'][1]['player']['fullName']],
-            self.players_involved_against = [event['players'][0]['player']['fullName']]
+            self.players_direct_for = [self.event_json['players'][1]['player']['fullName']],
+            self.players_direct_against = [self.event_json['players'][0]['player']['fullName']]
         elif "Goal" in self.type_of_event:
-            self.players_involved_for = [x['player']['fullName'] for x in event['players'] if
-                                         "Goalie" not in x['playerType']]
-            self.players_involved_against = [x['player']['fullName'] for x in event['players'] if
-                                             "Goalie" in x['playerType']]
-        elif 'Missed' in self.type_of_event or 'Giveaway' in self.type_of_event \
-                or "Takeaway" in self.type_of_event or "Penalty" in self.type_of_event:
+            self.players_direct_for = [x['player']['fullName'] for x in self.event_json['players'] if
+                                       "Goalie" not in x['playerType']]
+            self.players_direct_against = [x['player']['fullName'] for x in self.event_json['players'] if
+                                           "Goalie" in x['playerType']]
+        elif 'Missed' in self.type_of_event or 'Giveaway' in self.type_of_event or "Takeaway" in self.type_of_event or "Penalty" in self.type_of_event:
             # Missed shots do not a second player tracked (goalie etc)
             # Takeaways or Giveaways do not track who it was from / given to
-            self.player_for, self.player_against = [event['players'][0]['player']['fullName']], [None]
+            self.players_direct_for, self.players_direct_against = [self.event_json['players'][0]['player'][
+                                                                        'fullName']], [None]
         else:
-            # Shooter , Goalie, Hitter, Hittee,
-            self.player_for, self.player_against = [event['players'][0]['player']['fullName']], \
-                                                   [event['players'][1]['player']['fullName']]
+            # Shooter , Goalie, Hitter, Hittee
+            self.players_direct_for = [self.event_json['players'][0]['player']['fullName']]
+            self.players_direct_against = [self.event_json['players'][1]['player']['fullName']]
         return self
 
-    def get_team(self, event):
+    def get_team(self):
         """
         Returns the team of the player who DID the event
         abbreviated (BUF) format not full (Buffalo Sabres)
         """
-        self.team_of_player = event['team']['triCode']
-        return self
+        self.team_of_player = self.event_json['team']['triCode']
+        return self.team_of_player
 
-    def get_period(self, event):
+    def get_period(self):
         """
         Returns the period when the event occurred
         """
-        self.period = event['about']['period']
-        return self
+        self.period = self.event_json['about']['period']
+        return self.period
 
-    def get_time(self, event):
+    def get_time(self):
         """
         Returns the time, in seconds, when the event occurred
         MM:SS -> SS
         """
-        self.time = datetime.datetime.strptime(event['about']['periodTime'], "%M:%S").time()
-        return self
+        self.time = datetime.datetime.strptime(self.event_json['about']['periodTime'], "%M:%S").time()
+        return self.time
 
-    def get_score(self, event):
+    def get_score(self, ):
         """
         Adds the score at the time of the event
         """
-        self.score = event['about']['goals']['away'], event['about']['goals']['home']
-        return self
+        self.score = self.event_json['about']['goals']['away'], self.event_json['about']['goals']['home']
+        return self.score
 
-    def get_x(self, event):
+    def get_x(self):
         """
         Return x coordinate from event
         """
-        self.x_loc = event['coordinates']['x']
-        return self
+        self.x_loc = self.event_json['coordinates']['x']
+        return self.x_loc
 
-    def get_y(self, event):
+    def get_y(self):
         """
         Return y value from event
         """
-        self.y_loc = event['coordinates']['y']
-        return self
+        self.y_loc = self.event_json['coordinates']['y']
+        return self.y_loc

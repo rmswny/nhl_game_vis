@@ -60,8 +60,8 @@ class Game(Event):
         self.giveaways_in_game = []
         self.events_in_game = []
         self.retrieve_events_in_game()
+        a = 5
         # Functionality to complete the game
-        self.combine_shifts_events()
         '''
         TODO:
         Determine score & state for each shift & event
@@ -108,22 +108,6 @@ class Game(Event):
                 self.players_in_game[p_team].append(temp)
             self.is_goalie(player, p_name, p_team)
         return self.players_in_game
-
-    def parse_event(self, temp, event):
-        """
-        Parses event from NHL API
-        Functions handle edge cases for different events
-        """
-        temp.game_id = self.game_id
-        temp = temp.get_players(event)
-        temp = temp.get_team(event)
-        temp = temp.get_period(event)
-        temp = temp.get_time(event)
-        temp = temp.get_score(event)
-        temp = temp.get_x(event)
-        temp = temp.get_y(event)
-        temp = temp.transform_score()
-        return temp
 
     def add_event(self, temp):
         """
@@ -194,79 +178,74 @@ class Game(Event):
         """
         Retrieve the players who are on the ice for a given event
         """
-        if not isinstance(event_input, Event):
-            return
-        shifts = self.shifts_in_game[event_input.period]
-        for player_name in shifts:
-            start_index = bisect.bisect_left(shifts[player_name], event_input.time)
-            temp = shifts[player_name][start_index]
-            while shifts[player_name][start_index].start <= event_input.time:
-                if temp.team == event_input.team_of_player:
-                    event_input.players_on_for.append(player_name)
-                else:
-                    event_input.players_on_against.append(player_name)
-                start_index += 1
-                if start_index > len(shifts[player_name]) - 1:
+        shifts_by_period = self.shifts_in_game[event_input.period]
+        for player in shifts_by_period:
+            start_index = 0
+            player_shifts = shifts_by_period[player]
+            while start_index != len(player_shifts) and player_shifts[start_index].start <= event_input.time <= \
+                    player_shifts[start_index].end:
+                curr_shift = shifts_by_period[player][start_index]
+                if curr_shift.team == event_input.team_of_player:
+                    event_input.players_on_for.append(player)
                     break
+                else:
+                    event_input.players_on_against.append(player)
+                    break
+                start_index += 1
         # After all players have been checked, return
-        return self
+        return event_input
 
     def are_goalies_on(self, event_input):
         """
         True if both goalies are on ice, false if , at least, one is off the ice
         """
         players = set(event_input.players_on_for + event_input.players_on_against)
-        goalies = set(self.home_goalie, self.away_goalie)
+        goalies = self.home_goalie.union(self.away_goalie)
         return goalies.intersection(players)
 
-    def players_on_against(self, event_input):
-        if event_input.players_on_against == 6:
-            temp_state = '5v5'
-        elif event_input.players_on_against == 5:
-            temp_state = "5v4"
-        elif event_input.players_on_against == 4:
-            temp_state = "5v3"
+    def determine_players_on(self, list_of_players, goalies):
+        num_of_players_excluding_goalie = 0
+        if goalies.intersection(set(list_of_players)):
+            # If there's a goalie in the list of players, then at most 5 players on ice
+            num_of_players_excluding_goalie = len(list_of_players) - 1
         else:
-            raise NotImplementedError
-        return temp_state
+            num_of_players_excluding_goalie = len(list_of_players)
+        return num_of_players_excluding_goalie
 
     def determine_event_state(self, event_input):
         """
         Determines the state at time of the event
         """
-        if isinstance(event_input, Event):
-            goalies_set = self.are_goalies_on(event_input)
-            if event_input.players_on_for == 6:
-                self.state = self.players_on_against(event_input, goalies_set)
-            elif event_input.players_on_for == 5:
-                self.state = self.players_on_against(event_input, goalies_set)
-            elif event_input.players_on_for == 4:
-                self.state = self.players_on_against(event_input, goalies_set)
+        state = "{}v{}"  # team_of_event 3/4/5/6 vs 3/4/5/6
+        goalies_on_for_event = self.are_goalies_on(event_input)  # Returns goalies who are on the ice for the event
+        for_ = self.determine_players_on(event_input.players_on_for, goalies_on_for_event)
+        against_ = self.determine_players_on(event_input.players_on_against, goalies_on_for_event)
+        event_input.state = state.format(for_, against_)
+        return event_input
 
-
-def retrieve_events_in_game(self):
-    """
-    Parse self.json_data and retrieve all events reported in the game
-    Helper function for each type of event, since each have their own little quirks
-    """
-    events = self.game_json['liveData']['plays']['allPlays']
-    for event in events:
-        event_type = event['result']['event']  # Type of event
-        if event_type in TRACKED_EVENTS:
-            """
-            Create event object
-            Parse it base on type
-            FIND OUT WHO IS ON THE ICE -- DETERMINE PLAYING STATE
-            EACH EVENT CARRIES THE SCORE, RETRIEVE THAT 
-            """
-            new_event = Event(type_of_event=event_type)
-            new_event = self.parse_event(new_event, event)
-            self.retrieve_players_on_ice_for_event(new_event)
-            self.add_event(new_event)
-        elif event_type not in NOT_TRACKED_EVENTS:
-            print(event_type)
-    self.get_final_score(new_event)
-    return self
+    def retrieve_events_in_game(self):
+        """
+        Parse self.json_data and retrieve all events reported in the game
+        Helper function for each type of event, since each have their own little quirks
+        """
+        events = self.game_json['liveData']['plays']['allPlays']
+        for event in events:
+            event_type = event['result']['event']  # Type of event
+            if event_type in TRACKED_EVENTS:
+                """
+                Create event object
+                Parse it base on type
+                FIND OUT WHO IS ON THE ICE -- DETERMINE PLAYING STATE
+                EACH EVENT CARRIES THE SCORE, RETRIEVE THAT 
+                """
+                temp_event = Event(event)
+                temp_event = self.retrieve_players_on_ice_for_event(temp_event)
+                temp_event = self.determine_event_state(temp_event)
+                self.add_event(temp_event)
+            elif event_type not in NOT_TRACKED_EVENTS:
+                print(event_type)
+        self.get_final_score(temp_event)
+        return self
 
 # def write_to_file(self):
 #     """
