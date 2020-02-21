@@ -147,10 +147,9 @@ class Game(Event):
         """
         lower_bound = 0
         for index, shift in enumerate(shifts_for_player):
-            if isinstance(shift, Shift) and isinstance(event_time, Event):
-                if shift.end > event_time.time:
+            if shift.start <= event_time:
+                if index > lower_bound:
                     lower_bound = index
-                    return lower_bound
         return lower_bound
 
     def stoppage_before(self, current_player, current_shift, current_event):
@@ -181,7 +180,7 @@ class Game(Event):
         for player in shifts_by_period:
             start_index = self.find_start_index(shifts_by_period[player], event_input.time)
             curr_shift = shifts_by_period[player][start_index]
-            if curr_shift.start <= event_input.time <= curr_shift.end:
+            if curr_shift.start <= event_input.time < curr_shift.end:
                 event_input = self.stoppage_before(player, curr_shift, event_input)
         return event_input
 
