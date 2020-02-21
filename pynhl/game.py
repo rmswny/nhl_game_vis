@@ -52,15 +52,15 @@ class Game(Event):
         self.retrieve_players_in_game()
         self.events_in_game = []
         self.retrieve_events_in_game()
-        # Events of each type
-        self.penalties_in_game = []
-        self.face_offs_in_game = []
-        self.hits_in_game = []
-        self.shots_in_game = []
-        self.goals_in_game = []
-        self.takeaways_in_game = []
-        self.giveaways_in_game = []
         a = 5
+        # Events of each type - Think these can be determined without using extra space?
+        # self.penalties_in_game = []
+        # self.face_offs_in_game = []
+        # self.hits_in_game = []
+        # self.shots_in_game = []
+        # self.goals_in_game = []
+        # self.takeaways_in_game = []
+        # self.giveaways_in_game = []
 
     def __str__(self):
         return f"Game ID: {self.game_id} , Season: {self.game_season} : {self.home_team} " \
@@ -97,29 +97,6 @@ class Game(Event):
                 self.players_in_game[p_team].append(temp)
             self.is_goalie(player, p_name, p_team)
         return self.players_in_game
-
-    def separate_events_by_type(self, temp):
-        """
-        Adds event to it's proper set based off of it's type
-        """
-
-        if "Penalty" in temp.type_of_event:
-            self.penalties_in_game.append(temp)
-        elif "Faceoff" in temp.type_of_event:
-            self.face_offs_in_game.append(temp)
-        elif "Shot" in temp.type_of_event:
-            self.shots_in_game.append(temp)
-        elif "Goal" in temp.type_of_event:
-            self.goals_in_game.append(temp)
-        elif "Hit" in temp.type_of_event:
-            self.hits_in_game.append(temp)
-        elif "Takeaway" in temp.type_of_event:
-            self.takeaways_in_game.append(temp)
-        elif "Giveaway" in temp.type_of_event:
-            self.giveaways_in_game.append(temp)
-        else:
-            raise NotImplementedError
-        return self
 
     def get_final_score(self, last_event):
         """
@@ -176,17 +153,25 @@ class Game(Event):
                     return lower_bound
         return lower_bound
 
-    def stoppage_before(self):
+    def stoppage_before(self, current_player, current_shift, current_event):
         """
-        Edge cases for adding to on_ice_for
-        faceoff at :22 seconds period 1
-
-        Conditional event assignment:
-
-        faceoffs -> if end.time == event.time, that player is NOT on the ice
-        penalties -> probably also true
-        For instance, faceoffs: if shift.end == event.time, that was player not on the ice
+        Some events have the same time as the previous event. This means a stoppage must've occurred.
+        This leads to an error in the conditional statements where some events have >6 players on the ice
+        This function will then ensure which players are on the ice for an event, when the previous event has the same
+        time as the new event
         """
+        if current_shift.end != current_event.time:
+            '''
+            LOGIC:
+                If the end of the shift is the same as the time of the event
+                the previous event MUST have been a stoppage
+                and therefore the player is NOT considered to be on the ice
+            '''
+            if current_shift.team == current_event.team_of_player:
+                current_event.players_on_for.append(current_player)
+            else:
+                current_event.players_on_against.append(current_player)
+        return current_event
 
     def retrieve_players_on_ice_for_event(self, event_input):
         """
@@ -197,15 +182,7 @@ class Game(Event):
             start_index = self.find_start_index(shifts_by_period[player], event_input.time)
             curr_shift = shifts_by_period[player][start_index]
             if curr_shift.start <= event_input.time <= curr_shift.end:
-                if curr_shift.team == event_input.team_of_player:
-                    event_input.players_on_for.append(player)
-                else:
-                    event_input.players_on_against.append(player)
-        # After all players have been checked, return
-        num_players = len(event_input.players_on_for) + len(event_input.players_on_against)
-        if num_players < 11 or num_players > 12:
-            a = 5
-            b = 4
+                event_input = self.stoppage_before(player, curr_shift, event_input)
         return event_input
 
     def are_goalies_on(self, event_input):
@@ -243,17 +220,19 @@ class Game(Event):
         """
         events = self.game_json['liveData']['plays']['allPlays']
         add_events = self.events_in_game.append
-        for event in events:
+        for index, event in enumerate(events):
             event_type = event['result']['event']  # Type of event
             if event_type in TRACKED_EVENTS:
                 temp_event = Event(event)
                 temp_event = self.retrieve_players_on_ice_for_event(temp_event)
                 temp_event = self.determine_event_state(temp_event)
                 add_events(temp_event)
-                # self.separate_events_by_type(temp_event)
-            elif event_type not in NOT_TRACKED_EVENTS:
-                print(event_type)
-        self.get_final_score(temp_event)
+        # Last events holds the final score of the game
+        try:
+            self.get_final_score(temp_event)
+        except UnboundLocalError as no_events_in_game:
+            print("Somehow not one event was in a game")
+            print(no_events_in_game)
         return self
 
 # def write_to_file(self):
@@ -267,3 +246,25 @@ class Game(Event):
 #         "Game ID", "Type of Event", "Period", "Time", "X", "Y", "Score", "Strength"  # 5v5/5v4/5v3 etc
 #         , "Team of Event", "Player FOR", "Player AGAINST", "Players ON FOR", "Players ON AGAINST"
 #     ]
+# def separate_events_by_type(self, temp):
+#     """
+#     Adds event to it's proper set based off of it's type
+#     """
+#
+#     if "Penalty" in temp.type_of_event:
+#         self.penalties_in_game.append(temp)
+#     elif "Faceoff" in temp.type_of_event:
+#         self.face_offs_in_game.append(temp)
+#     elif "Shot" in temp.type_of_event:
+#         self.shots_in_game.append(temp)
+#     elif "Goal" in temp.type_of_event:
+#         self.goals_in_game.append(temp)
+#     elif "Hit" in temp.type_of_event:
+#         self.hits_in_game.append(temp)
+#     elif "Takeaway" in temp.type_of_event:
+#         self.takeaways_in_game.append(temp)
+#     elif "Giveaway" in temp.type_of_event:
+#         self.giveaways_in_game.append(temp)
+#     else:
+#         raise NotImplementedError
+#     return self
