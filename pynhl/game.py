@@ -52,6 +52,11 @@ class Game(Event):
         self.retrieve_players_in_game()
         self.events_in_game = []
         self.retrieve_events_in_game()
+        temp = {}
+        for eve in self.events_in_game:
+            if eve.state not in temp:
+                temp[eve.state] = []
+            temp[eve.state].append(eve)
         a = 5
         # Events of each type - Think these can be determined without using extra space?
         # self.penalties_in_game = []
