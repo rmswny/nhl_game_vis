@@ -33,13 +33,18 @@ class Shift:
         self.events = []  # Events that happened during the shift
 
     def __eq__(self, other):
-        return self.period == other.period and self.start == other.start and self.end == other.end
+        if self.period == other.period:
+            return self.end < other.end
+        else:
+            return self.period < other.period
+        # return self.period == other.period and self.start == other.start and self.end == other.end
 
     def __hash__(self):
         return hash(self.period) + hash(self.duration)
 
     def __str__(self):
-        return f"{self.name} , {self.period} , {self.start} : {self.end}"
+        # return f"{self.name} , {self.period} , {self.start} : {self.end}"
+        return "{}, {}, {}:{}".format(self.name, self.period, self.start, self.end)
 
     def __lt__(self, other):
         if isinstance(other, Shift):

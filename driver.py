@@ -1,4 +1,4 @@
-import requests, json
+import requests, json, cProfile, memory_profiler
 from bs4 import BeautifulSoup
 from pynhl.game import Game
 
@@ -52,12 +52,5 @@ if __name__ == "__main__":
     # save_json_data(shift_data_json,False,NHL_GAME_NUM)
     curr_game_shifts = read_json_data(NHL_GAME_NUM, is_game=False)
     curr_game = read_json_data(NHL_GAME_NUM)
-    players_events_shifts = []
     parsed_game = Game(curr_game, curr_game_shifts)
-    # parsed_game.players_in_game ADD THIS AFTER
-    """
-    Get all shifts DONE
-    Get all events and players DONE
-    Add shift and event data to player
-    Move on to the next game
-    """
+    a = 5

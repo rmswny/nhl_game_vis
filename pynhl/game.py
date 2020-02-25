@@ -1,8 +1,12 @@
 from pynhl.event import Event
 from pynhl.player import Player
 from pynhl.shift import Shift
-import bisect
+import datetime, operator
 
+STOPPAGES = {
+    "Stoppage",
+    "Period Start"
+}
 TRACKED_EVENTS = {
     "Shot",
     "Faceoff",
@@ -21,12 +25,11 @@ NOT_TRACKED_EVENTS = {
     "Period End",
     "Game Scheduled",
     "Period Ready",
-    "Period Official",
-    "Stoppage"
+    "Period Official"
 }
 
 
-class Game(Event):
+class Game:
     # Game will have Players who will have shifts and each shift can/will have event(s)
     '''
     This class will take in a JSON DICT of game data
@@ -48,28 +51,25 @@ class Game(Event):
         # Players and shifts for each game
         self.shifts_in_game = {}
         self.retrieve_shifts_from_game()
+        self.sort_shifts()
         self.players_in_game = {}
         self.retrieve_players_in_game()
         self.events_in_game = []
+        self.stoppages_in_game = {}  # per:time
         self.retrieve_events_in_game()
-        temp = {}
-        for eve in self.events_in_game:
-            if eve.state not in temp:
-                temp[eve.state] = []
-            temp[eve.state].append(eve)
-        a = 5
-        # Events of each type - Think these can be determined without using extra space?
-        # self.penalties_in_game = []
-        # self.face_offs_in_game = []
-        # self.hits_in_game = []
-        # self.shots_in_game = []
-        # self.goals_in_game = []
-        # self.takeaways_in_game = []
-        # self.giveaways_in_game = []
+        self.parse_events_in_game()
+        # Clear unnecessary data from the game API
+        self.cleanup()
 
     def __str__(self):
-        return f"Game ID: {self.game_id} , Season: {self.game_season} : {self.home_team} " \
-               f"vs. {self.away_team} Final Score: {self.final_score}"
+        # return f"Game ID: {self.game_id} , Season: {self.game_season} : {self.home_team} " \
+        #        f"vs. {self.away_team} Final Score: {self.final_score}"
+        return "Game ID: {} Season: {} {} vs. {} Final Score: {}".format(self.game_id, self.game_season, self.home_team,
+                                                                         self.away_team, self.final_score)
+
+    def cleanup(self):
+        self.game_json = None
+        self.shift_json = None
 
     def is_goalie(self, player_id, player_name, player_team):
         """
@@ -130,6 +130,13 @@ class Game(Event):
                      score=score)
         return temp
 
+    def sort_shifts(self, sort_key='end'):
+        """Helper function to find the correct placement to"""
+        for period in self.shifts_in_game:
+            for player in self.shifts_in_game[period]:
+                self.shifts_in_game[period][player].sort(key=operator.attrgetter(sort_key))
+        return self
+
     def retrieve_shifts_from_game(self):
         """
         Assign shifts in game to it's corresponding player
@@ -142,133 +149,77 @@ class Game(Event):
                 self.shifts_in_game[temp.period] = {}
             if temp.name not in self.shifts_in_game[temp.period]:
                 self.shifts_in_game[temp.period][temp.name] = []
-            bisect.insort(self.shifts_in_game[temp.period][temp.name], temp)
+            self.shifts_in_game[temp.period][temp.name].append(temp)
         return self
 
-    def find_start_index(self, shifts_for_player, event_time):
+    def add_stoppage(self, stoppage_event):
         """
-        Helper function to find the start index for a players shift related to the event start time
-        shifts_for_player is already filtered by period
-        """
-        lower_bound = 0
-        for index, shift in enumerate(shifts_for_player):
-            if shift.start <= event_time:
-                if index > lower_bound:
-                    lower_bound = index
-        return lower_bound
+        Adds a stoppage to the member variable
 
-    def stoppage_before(self, current_player, current_shift, current_event):
+        TODO: Not all events that the puck being frozen cause a stoppage -- Combine stoppages + faceoffs for all?
         """
-        Some events have the same time as the previous event. This means a stoppage must've occurred.
-        This leads to an error in the conditional statements where some events have >6 players on the ice
-        This function will then ensure which players are on the ice for an event, when the previous event has the same
-        time as the new event
-        """
-        if current_shift.end != current_event.time:
-            '''
-            LOGIC:
-                If the end of the shift is the same as the time of the event
-                the previous event MUST have been a stoppage
-                and therefore the player is NOT considered to be on the ice
-            '''
-            if current_shift.team == current_event.team_of_player:
-                current_event.players_on_for.append(current_player)
-            else:
-                current_event.players_on_against.append(current_player)
-        return current_event
-
-    def retrieve_players_on_ice_for_event(self, event_input):
-        """
-        Retrieve the players who are on the ice for a given event
-        """
-        shifts_by_period = self.shifts_in_game[event_input.period]
-        for player in shifts_by_period:
-            start_index = self.find_start_index(shifts_by_period[player], event_input.time)
-            curr_shift = shifts_by_period[player][start_index]
-            if curr_shift.start <= event_input.time < curr_shift.end:
-                event_input = self.stoppage_before(player, curr_shift, event_input)
-        return event_input
-
-    def are_goalies_on(self, event_input):
-        """
-        True if both goalies are on ice, false if , at least, one is off the ice
-        """
-        players = set(event_input.players_on_for + event_input.players_on_against)
-        goalies = self.home_goalie.union(self.away_goalie)
-        return goalies.intersection(players)
-
-    def determine_players_on(self, list_of_players, goalies):
-        num_of_players_excluding_goalie = 0
-        if goalies.intersection(set(list_of_players)):
-            # If there's a goalie in the list of players, then at most 5 players on ice
-            num_of_players_excluding_goalie = len(list_of_players) - 1
-        else:
-            num_of_players_excluding_goalie = len(list_of_players)
-        return num_of_players_excluding_goalie
-
-    def determine_event_state(self, event_input):
-        """
-        Determines the state at time of the event
-        """
-        state = "{}v{}"  # team_of_event 3/4/5/6 vs 3/4/5/6
-        goalies_on_for_event = self.are_goalies_on(event_input)  # Returns goalies who are on the ice for the event
-        for_ = self.determine_players_on(event_input.players_on_for, goalies_on_for_event)
-        against_ = self.determine_players_on(event_input.players_on_against, goalies_on_for_event)
-        event_input.state = state.format(for_, against_)
-        return event_input
+        period = int(stoppage_event['about']['period'])
+        time = datetime.datetime.strptime(stoppage_event['about']['periodTime'], "%M:%S").time()
+        if period not in self.stoppages_in_game:
+            self.stoppages_in_game[period] = []
+        self.stoppages_in_game[period].append(time)
+        return self
 
     def retrieve_events_in_game(self):
         """
-        Parse self.json_data and retrieve all events reported in the game
-        Helper function for each type of event, since each have their own little quirks
+        Function to retrieve all events, and their necessary information
+        to the class object
         """
         events = self.game_json['liveData']['plays']['allPlays']
         add_events = self.events_in_game.append
-        for index, event in enumerate(events):
-            event_type = event['result']['event']  # Type of event
-            if event_type in TRACKED_EVENTS:
-                temp_event = Event(event)
-                temp_event = self.retrieve_players_on_ice_for_event(temp_event)
-                temp_event = self.determine_event_state(temp_event)
+        for index, curr_event in enumerate(events):
+            type_of_event = curr_event['result']['event']
+            if type_of_event in TRACKED_EVENTS:
+                temp_event = Event(curr_event)
                 add_events(temp_event)
-        # Last events holds the final score of the game
+            elif type_of_event in STOPPAGES:
+                self.add_stoppage(curr_event)
         try:
+            # Last events holds the final score of the game
             self.get_final_score(temp_event)
         except UnboundLocalError as no_events_in_game:
             print("Somehow not one event was in a game")
             print(no_events_in_game)
         return self
 
-# def write_to_file(self):
-#     """
-#     Write schema to file
-#     Iterate through each event and write to same file
-#     """
-#     # GameID | Event | Period | Time of event | X | Y | Score At Time Of Event | State At Time of Event |
-#     # TeamOfEvent | PlayerWhoDidEvent | PlayerWhoReceivedEvent |  Players On FOR | Players On Against |
-#     headers = [
-#         "Game ID", "Type of Event", "Period", "Time", "X", "Y", "Score", "Strength"  # 5v5/5v4/5v3 etc
-#         , "Team of Event", "Player FOR", "Player AGAINST", "Players ON FOR", "Players ON AGAINST"
-#     ]
-# def separate_events_by_type(self, temp):
-#     """
-#     Adds event to it's proper set based off of it's type
-#     """
-#
-#     if "Penalty" in temp.type_of_event:
-#         self.penalties_in_game.append(temp)
-#     elif "Faceoff" in temp.type_of_event:
-#         self.face_offs_in_game.append(temp)
-#     elif "Shot" in temp.type_of_event:
-#         self.shots_in_game.append(temp)
-#     elif "Goal" in temp.type_of_event:
-#         self.goals_in_game.append(temp)
-#     elif "Hit" in temp.type_of_event:
-#         self.hits_in_game.append(temp)
-#     elif "Takeaway" in temp.type_of_event:
-#         self.takeaways_in_game.append(temp)
-#     elif "Giveaway" in temp.type_of_event:
-#         self.giveaways_in_game.append(temp)
-#     else:
-#         raise NotImplementedError
-#     return self
+    def parse_events_in_game(self):
+        """
+        Function to find the players who are on ice for the event, and determine the state at time of the event
+        :return:
+        """
+        for i, event_to_parse in enumerate(self.events_in_game):
+            if isinstance(event_to_parse, Event):
+                event_to_parse.retrieve_players_on_ice_for_event(self.shifts_in_game[event_to_parse.period],
+                                                                 self.home_goalie.union(self.away_goalie))
+                event_to_parse.determine_event_state()
+                self.events_in_game[i] = event_to_parse
+        return self
+
+    def dump_game_data_to_players(self):
+        """
+        Function to assign events to individual player objects
+        This allows us to maintain a database of Player information
+        Game.py creates players from API and events have been parsed
+        Iterate through and assign them properly
+        """
+        for completed_event in self.events_in_game:
+            if isinstance(completed_event, Event):
+                # completed_event.players_on_against
+                # completed_event.players_on_for
+                # completed_event.players_direct_for
+                # completed_event.players_direct_against
+                for player in completed_event.players_on_against:
+                    if player not in self.players_in_game[self.home_team]:
+                        if isinstance(self.players_in_game[self.away_team], Player):
+                            pass
+                    else:
+                        if isinstance(self.players_in_game[self.home_team], Player):
+                            pass
+                    # if isinstance(self.players_in_game[])
+                    self.players_in_game[player]
+                pass
