@@ -7,6 +7,41 @@ EVENTS_THAT_CAN_CAUSE_A_STOPPAGE = {
 }
 
 
+def is_time_within_range(check_time, start_time, end_time, event_=None):
+    """
+    Some events have the same time as the previous event. This means a stoppage must've occurred.
+    This leads to an error in the conditional statements where some events have >6 players on the ice
+    This function will then ensure which players are on the ice for an event, when the previous event has the same
+    time as the new event
+
+    Returns True if player was on during time range, False if not
+    """
+    is_player_on = False
+    if start_time < check_time < end_time:
+        is_player_on = True
+    elif start_time == check_time and event_ not in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
+        # Start of shift is when event occurs
+        is_player_on = True
+    elif end_time == check_time and event_ in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
+        is_player_on = True
+    return is_player_on
+
+
+def find_start_index(shifts_for_player, baseline_time):
+    """
+    Helper function to find the start index for a players shift related to the event start time
+    shifts_for_player is already filtered by period
+    """
+    lower_bound = 0
+    for index, shift in enumerate(shifts_for_player):
+        if shift.start <= baseline_time:
+            if index > lower_bound:
+                lower_bound = index
+        else:
+            break
+    return lower_bound
+
+
 class Event:
     '''
     Class handling all necessary attributes of an EVENT from the NHL Game Data API
@@ -141,38 +176,19 @@ class Event:
         self.state = "{}v{}".format(len(self.players_on_for), len(self.players_on_against))
         return self
 
-    def retrieve_players_on_ice_for_event(self, shifts_in_period, goalies):
+    def get_players_for_event(self, shifts_in_period, goalies):
         """
-        Retrieve the players who are on the ice for a given event
+        Determine which players are on the ice for the event
         """
         for player in shifts_in_period:
-            start_index = self.find_start_index(shifts_in_period[player])
-            self.determine_player_to_event(player, shifts_in_period[player][start_index], goalies)
-        return self
-
-    def determine_player_to_event(self, current_player, current_shift, goalies):
-        """
-        Some events have the same time as the previous event. This means a stoppage must've occurred.
-        This leads to an error in the conditional statements where some events have >6 players on the ice
-        This function will then ensure which players are on the ice for an event, when the previous event has the same
-        time as the new event
-        """
-        '''
-        Logic for cases:
-        < and < -- simple case, shift starts before event and ends after event
-        shift.start==event.time AND a stoppage is at the same time
-            implying that the player came off the bench, during a whistle, and began play
-        shift.end==event.time
-            Edge case: event that causes a whistle. Penalty/Goal/Shot
-        '''
-        if current_shift.start < self.time < current_shift.end:
-            self.assign_player_to_event(current_shift, current_player, goalies)
-        elif current_shift.start == self.time and self.type_of_event not in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
-            # Start of shift is when event occurs
-            self.assign_player_to_event(current_shift, current_player, goalies)
-        elif current_shift.end == self.time and self.type_of_event in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
-            # TODO: IF event caused a stoppage, the player was on (penalty, goal) VERSUS events following a stoppage (faceoff)
-            self.assign_player_to_event(current_shift, current_player, goalies)
+            # Find the latest shift where the start is less than the time of the event (ignore everything before/after)
+            shift_index = find_start_index(shifts_in_period[player], self.time)
+            shift_ = shifts_in_period[player][shift_index]
+            # If true, player was on for the event. False, ignore and move to the next player
+            is_on = is_time_within_range(self.time, shift_.start, shift_.end, self.type_of_event)
+            if is_on:
+                # Add player to the event
+                self.assign_player_to_event(shifts_in_period[player][shift_index], player, goalies)
         return self
 
     def assign_player_to_event(self, current_shift, current_player, goalies):
@@ -190,20 +206,6 @@ class Event:
             else:
                 self.players_on_against.append(current_player)
             return self
-
-    def find_start_index(self, shifts_for_player):
-        """
-        Helper function to find the start index for a players shift related to the event start time
-        shifts_for_player is already filtered by period
-        """
-        lower_bound = 0
-        for index, shift in enumerate(shifts_for_player):
-            if shift.start <= self.time:
-                if index > lower_bound:
-                    lower_bound = index
-            else:
-                break
-        return lower_bound
 
     def are_goalies_on(self, goalies):
         """

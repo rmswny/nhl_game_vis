@@ -1,4 +1,4 @@
-from pynhl.event import Event
+from pynhl.event import Event, is_time_within_range, find_start_index
 from pynhl.player import Player
 from pynhl.shift import Shift
 import datetime, operator
@@ -55,9 +55,9 @@ class Game:
         self.players_in_game = {}
         self.retrieve_players_in_game()
         self.events_in_game = []
-        self.stoppages_in_game = {}  # per:time
         self.retrieve_events_in_game()
         self.parse_events_in_game()
+        self.generate_line_times()
         # Clear unnecessary data from the game API
         self.cleanup()
 
@@ -71,36 +71,32 @@ class Game:
         self.game_json = None
         self.shift_json = None
 
-    def is_goalie(self, player_id, player_name, player_team):
+    def add_goalie(self, player_object):
         """
-        Adds player, if they are the goalie to self.goalie
+        If a player is a goalie, adds it to home/away_goalie variable
         """
-        temp = self.game_json['gameData']['players'][player_id]['primaryPosition']['code']
-        if 'G' in self.game_json['gameData']['players'][player_id]['primaryPosition']['code']:
-            if player_team == self.home_team:
-                self.home_goalie.add(player_name)
-            else:
-                self.away_goalie.add(player_name)
+        if isinstance(player_object, Player):
+            if 'G' in player_object.position:
+                if player_object.team == self.home_team:
+                    self.home_goalie.add(player_object.name)
+                else:
+                    self.away_goalie.add(player_object.name)
         return self
-
-    # Is a goalie, find team and add player to that member variable
 
     def retrieve_players_in_game(self):
         """
         Parse self.json_data for PLAYERS in the game
         Update self.players_in_game to be a list of [Player objects]
         """
-        for player in self.game_json['gameData']['players']:
+        all_players = self.game_json["gameData"]["players"]
+        for player_id in all_players:
             # Add all players from game
-            p_name = self.game_json['gameData']['players'][player]['fullName']  # name
-            p_number = self.game_json['gameData']['players'][player]['primaryNumber']
-            p_team = self.game_json['gameData']['players'][player]['currentTeam']['triCode']  # team
-            temp = Player(p_name, p_number, p_team)
-            if p_team not in self.players_in_game:
-                self.players_in_game[p_team] = []
-            if temp not in self.players_in_game[p_team]:
-                self.players_in_game[p_team].append(temp)
-            self.is_goalie(player, p_name, p_team)
+            temp = Player(all_players[player_id])
+            if temp.team not in self.players_in_game:
+                self.players_in_game[temp.team] = []
+            if temp not in self.players_in_game[temp.team]:
+                self.players_in_game[temp.team].append(temp)
+            self.add_goalie(temp)
         return self.players_in_game
 
     def get_final_score(self, last_event):
@@ -152,19 +148,6 @@ class Game:
             self.shifts_in_game[temp.period][temp.name].append(temp)
         return self
 
-    def add_stoppage(self, stoppage_event):
-        """
-        Adds a stoppage to the member variable
-
-        TODO: Not all events that the puck being frozen cause a stoppage -- Combine stoppages + faceoffs for all?
-        """
-        period = int(stoppage_event['about']['period'])
-        time = datetime.datetime.strptime(stoppage_event['about']['periodTime'], "%M:%S").time()
-        if period not in self.stoppages_in_game:
-            self.stoppages_in_game[period] = []
-        self.stoppages_in_game[period].append(time)
-        return self
-
     def retrieve_events_in_game(self):
         """
         Function to retrieve all events, and their necessary information
@@ -177,8 +160,8 @@ class Game:
             if type_of_event in TRACKED_EVENTS:
                 temp_event = Event(curr_event)
                 add_events(temp_event)
-            elif type_of_event in STOPPAGES:
-                self.add_stoppage(curr_event)
+            # elif type_of_event in STOPPAGES:
+            #     self.add_stoppage(curr_event)
         try:
             # Last events holds the final score of the game
             self.get_final_score(temp_event)
@@ -194,32 +177,98 @@ class Game:
         """
         for i, event_to_parse in enumerate(self.events_in_game):
             if isinstance(event_to_parse, Event):
-                event_to_parse.retrieve_players_on_ice_for_event(self.shifts_in_game[event_to_parse.period],
-                                                                 self.home_goalie.union(self.away_goalie))
+                event_to_parse.get_players_for_event(self.shifts_in_game[event_to_parse.period],
+                                                     self.home_goalie.union(self.away_goalie))
                 event_to_parse.determine_event_state()
                 self.events_in_game[i] = event_to_parse
         return self
 
-    def dump_game_data_to_players(self):
+    def get_all_shifts_per_player(self, player_name):
+        """Helper function to retrieve all shifts from the game for a given player"""
+        all_shifts_by_player = {}  # period:(start,end)
+        for period in self.shifts_in_game:
+            try:
+                for shift in self.shifts_in_game[period][player_name]:
+                    if period not in all_shifts_by_player:
+                        all_shifts_by_player[period] = []
+                    all_shifts_by_player[period].append(shift)
+            except KeyError as no_shifts_this_period_error:
+                print(no_shifts_this_period_error)
+                continue
+        return all_shifts_by_player
+
+    def get_time_shared(self, curr_shift, other_shift):
+        """Function to return the time shared while on the ice together"""
+        a = datetime.time(minute=1, second=24)
+        b = datetime.time(minute=2, second=1)
+        big_minus_small = datetime.timedelta(minutes=b.minute, seconds=b.second) - datetime.timedelta(minutes=a.minute,
+                                                                                                      seconds=a.second)
+        small_minus_big = datetime.timedelta(minutes=a.minute, seconds=a.second) - datetime.timedelta(minutes=b.minute,
+                                                                                                      seconds=b.second)
+        if small_minus_big.days == -1:
+            small_minus_big = (datetime.timedelta(days=1) - small_minus_big)
+        c = 5
+
+    def generate_line_times(self):
         """
-        Function to assign events to individual player objects
-        This allows us to maintain a database of Player information
-        Game.py creates players from API and events have been parsed
-        Iterate through and assign them properly
+        Function to generate the amount of time EACH player played with EACH player IF they were on the ice together
         """
-        for completed_event in self.events_in_game:
-            if isinstance(completed_event, Event):
-                # completed_event.players_on_against
-                # completed_event.players_on_for
-                # completed_event.players_direct_for
-                # completed_event.players_direct_against
-                for player in completed_event.players_on_against:
-                    if player not in self.players_in_game[self.home_team]:
-                        if isinstance(self.players_in_game[self.away_team], Player):
-                            pass
-                    else:
-                        if isinstance(self.players_in_game[self.home_team], Player):
-                            pass
-                    # if isinstance(self.players_in_game[])
-                    self.players_in_game[player]
-                pass
+        for team in self.players_in_game:  # Calculate for each team in game
+            for player in self.players_in_game[team]:  # Calculate for each player on each team
+                shifts_from_player = self.get_all_shifts_per_player(player.name)  # Check every shift from each player
+                for period in shifts_from_player:  # For each period
+                    for shift in shifts_from_player[period]:  # For each shift in each period
+                        for other_player in {p.name for p in self.players_in_game[team] if player.name not in p.name}:
+                            try:
+                                other_shifts = self.get_all_shifts_per_player(other_player)[period]
+                                other_index = find_start_index(other_shifts, shift.start)
+                                other_shift = other_shifts[other_index]
+                                if is_time_within_range(shift.start, other_shift.start, other_shift.end):
+                                    self.get_time_shared(shift, other_shift)
+                                    """
+                                    other_player was on the ice with player
+                                    subtract time differences
+                                    add player + shared time to Player object
+                                    On to the next...
+                                    """
+
+                                    a = 5
+                                else:
+                                    continue
+                            except KeyError as no_shifts_in_period:
+                                print(no_shifts_in_period)
+
+    # def dump_game_data_to_players(self):
+    #     """
+    #     Function to assign events to individual player objects
+    #     This allows us to maintain a database of Player information
+    #     Game.py creates players from API and events have been parsed
+    #     Iterate through and assign them properly
+    #     """
+    #     for completed_event in self.events_in_game:
+    #         if isinstance(completed_event, Event):
+    #             # completed_event.players_on_against
+    #             # completed_event.players_on_for  
+    #             # completed_event.players_direct_for
+    #             # completed_event.players_direct_against
+    #             for player in completed_event.players_on_against:
+    #                 if player not in self.players_in_game[self.home_team]:
+    #                     if isinstance(self.players_in_game[self.away_team], Player):
+    #                         pass
+    #                 else:
+    #                     if isinstance(self.players_in_game[self.home_team], Player):
+    #                         pass
+    #                 # if isinstance(self.players_in_game[])
+    #                 self.players_in_game[player]
+    #             pass
+
+    # def add_stoppage(self, stoppage_event):
+    #     """
+    #     Adds a stoppage to the member variable
+    #     """
+    #     period = int(stoppage_event['about']['period'])
+    #     time = datetime.datetime.strptime(stoppage_event['about']['periodTime'], "%M:%S").time()
+    #     if period not in self.stoppages_in_game:
+    #         self.stoppages_in_game[period] = []
+    #     self.stoppages_in_game[period].append(time)
+    #     return self
