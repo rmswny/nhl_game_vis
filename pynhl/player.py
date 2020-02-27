@@ -2,22 +2,19 @@ class Player:
     # Player will have shifts where each shift can have event(s)
     def __init__(self, player_json):
         self.json_info = player_json
-        """
-        p_name = self.game_json['gameData']['players'][player]['fullName']  # name
-        p_number = self.game_json['gameData']['players'][player]['primaryNumber']
-        p_team = self.game_json['gameData']['players'][player]['currentTeam']['triCode']  # team
-        """
         self.name = self.json_info["fullName"]
         self.position = self.json_info["primaryPosition"]["type"]
         self.parse_position_type()
         self.jersey_num = self.json_info["primaryNumber"]
         self.team = self.json_info["currentTeam"]["triCode"]
+
         # Each shift can have events
         self.shifts = {}  # GameID:[shifts]
         self.direct_events_for = []
         self.direct_events_against = []
         self.events_on_for = []
         self.events_on_against = []
+
         # Calculations/Features
         self.shifts_per_game = None
         self.average_time_per_shift = None
@@ -25,6 +22,8 @@ class Player:
         self.average_events_per_shift = None
         self.most_common_teammates_per_game = {}  # Game:Players
         self.ice_time_with_players = {}  # Player Name : [toi_per_game]
+        self.ice_time_summed = {}  # Player : Sum_of_TOI
+
         # After creating the object, remove any unnecessary information
         self.cleanup()
 
@@ -86,3 +85,15 @@ class Player:
         :return:
         """
         pass
+
+    def sum_time_together(self, game_id):
+        """
+        Function to sum the values in ice_time_with_players
+        Separated by player, by game
+        """
+        for teammate in self.ice_time_with_players:
+            total = sum(self.ice_time_with_players[teammate])
+            if teammate not in self.ice_time_summed:
+                self.ice_time_summed[teammate] = {}
+            self.ice_time_summed[teammate][game_id] = total
+        return self

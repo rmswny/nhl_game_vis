@@ -1,7 +1,8 @@
 from pynhl.event import Event, is_time_within_range, find_start_index
 from pynhl.player import Player
 from pynhl.shift import Shift
-import datetime, operator
+from datetime import datetime, date, timedelta
+from operator import attrgetter, itemgetter
 
 STOPPAGES = {
     "Stoppage",
@@ -27,6 +28,36 @@ NOT_TRACKED_EVENTS = {
     "Period Ready",
     "Period Official"
 }
+
+
+def subtract_two_time_objects(left, right):
+    """
+    Select two datetime.time objects
+    And normalize return to seconds
+    """
+    result = timedelta(minutes=left.minute, seconds=left.second) - \
+             timedelta(minutes=right.minute, seconds=right.second)
+    if result.days == -1:
+        temp = (timedelta(days=1) - result)
+        return (temp.seconds // 3600) * 60 + temp.seconds
+    else:
+        return (result.seconds // 3600) * 60 + result.seconds
+
+
+def get_time_shared(curr_shift, other_shift):
+    """Function to return the time shared while on the ice together"""
+    """
+    How to get the time shared?
+    Current method -> find the start/end time when both are on the ice, subtract that differnece, move on
+        but it requires increasing the lower bound and decreasing the upper bound
+        Min : start or end time? 
+        max(start), min(end)
+        subtract that difference!
+    """
+    lower_bound = max(curr_shift.start, other_shift.start)
+    upper_bound = min(curr_shift.end, other_shift.end)
+    temp = datetime.combine(date.today(), upper_bound) - datetime.combine(date.today(), lower_bound)
+    return temp.seconds
 
 
 class Game:
@@ -56,10 +87,11 @@ class Game:
         self.retrieve_players_in_game()
         self.events_in_game = []
         self.retrieve_events_in_game()
-        self.parse_events_in_game()
-        self.generate_line_times()
         # Clear unnecessary data from the game API
         self.cleanup()
+        # Extra functionality that doesn't require game/shift json
+        self.parse_events_in_game()
+        self.generate_line_times()
 
     def __str__(self):
         # return f"Game ID: {self.game_id} , Season: {self.game_season} : {self.home_team} " \
@@ -130,7 +162,7 @@ class Game:
         """Helper function to find the correct placement to"""
         for period in self.shifts_in_game:
             for player in self.shifts_in_game[period]:
-                self.shifts_in_game[period][player].sort(key=operator.attrgetter(sort_key))
+                self.shifts_in_game[period][player].sort(key=attrgetter(sort_key))
         return self
 
     def retrieve_shifts_from_game(self):
@@ -193,21 +225,8 @@ class Game:
                         all_shifts_by_player[period] = []
                     all_shifts_by_player[period].append(shift)
             except KeyError as no_shifts_this_period_error:
-                print(no_shifts_this_period_error)
                 continue
         return all_shifts_by_player
-
-    def get_time_shared(self, curr_shift, other_shift):
-        """Function to return the time shared while on the ice together"""
-        a = datetime.time(minute=1, second=24)
-        b = datetime.time(minute=2, second=1)
-        big_minus_small = datetime.timedelta(minutes=b.minute, seconds=b.second) - datetime.timedelta(minutes=a.minute,
-                                                                                                      seconds=a.second)
-        small_minus_big = datetime.timedelta(minutes=a.minute, seconds=a.second) - datetime.timedelta(minutes=b.minute,
-                                                                                                      seconds=b.second)
-        if small_minus_big.days == -1:
-            small_minus_big = (datetime.timedelta(days=1) - small_minus_big)
-        c = 5
 
     def generate_line_times(self):
         """
@@ -224,51 +243,21 @@ class Game:
                                 other_index = find_start_index(other_shifts, shift.start)
                                 other_shift = other_shifts[other_index]
                                 if is_time_within_range(shift.start, other_shift.start, other_shift.end):
-                                    self.get_time_shared(shift, other_shift)
-                                    """
-                                    other_player was on the ice with player
-                                    subtract time differences
-                                    add player + shared time to Player object
-                                    On to the next...
-                                    """
-
-                                    a = 5
+                                    # Get time both players were on the ice
+                                    time_shared = get_time_shared(shift, other_shift)
+                                    if other_player not in player.ice_time_with_players:
+                                        player.ice_time_with_players[other_player] = []
+                                    # Add time to player object
+                                    player.ice_time_with_players[other_player].append(time_shared)
                                 else:
-                                    continue
-                            except KeyError as no_shifts_in_period:
-                                print(no_shifts_in_period)
-
-    # def dump_game_data_to_players(self):
-    #     """
-    #     Function to assign events to individual player objects
-    #     This allows us to maintain a database of Player information
-    #     Game.py creates players from API and events have been parsed
-    #     Iterate through and assign them properly
-    #     """
-    #     for completed_event in self.events_in_game:
-    #         if isinstance(completed_event, Event):
-    #             # completed_event.players_on_against
-    #             # completed_event.players_on_for  
-    #             # completed_event.players_direct_for
-    #             # completed_event.players_direct_against
-    #             for player in completed_event.players_on_against:
-    #                 if player not in self.players_in_game[self.home_team]:
-    #                     if isinstance(self.players_in_game[self.away_team], Player):
-    #                         pass
-    #                 else:
-    #                     if isinstance(self.players_in_game[self.home_team], Player):
-    #                         pass
-    #                 # if isinstance(self.players_in_game[])
-    #                 self.players_in_game[player]
-    #             pass
-
-    # def add_stoppage(self, stoppage_event):
-    #     """
-    #     Adds a stoppage to the member variable
-    #     """
-    #     period = int(stoppage_event['about']['period'])
-    #     time = datetime.datetime.strptime(stoppage_event['about']['periodTime'], "%M:%S").time()
-    #     if period not in self.stoppages_in_game:
-    #         self.stoppages_in_game[period] = []
-    #     self.stoppages_in_game[period].append(time)
-    #     return self
+                                    continue  # If they aren't on the ice together, move on
+                            except KeyError:  # Catches edge case where player did not have a shift in the same period
+                                continue
+        '''
+        Time together varies greatly between my algo and NST
+        http://naturalstattrick.com/game.php?season=20192020&game=20645
+        Debug!
+        '''
+        player.sum_time_together(game_id=self.game_id)
+        a = 5
+        return self
