@@ -35,8 +35,7 @@ def subtract_two_time_objects(left, right):
     Select two datetime.time objects
     And normalize return to seconds
     """
-    result = timedelta(minutes=left.minute, seconds=left.second) - \
-             timedelta(minutes=right.minute, seconds=right.second)
+    result = timedelta(minutes=left.minute, seconds=left.second) - timedelta(minutes=right.minute, seconds=right.second)
     if result.days == -1:
         temp = (timedelta(days=1) - result)
         return (temp.seconds // 3600) * 60 + temp.seconds
@@ -80,7 +79,7 @@ class Game:
         self.home_goalie = set()
         self.final_score = ''
         # Players and shifts for each game
-        self.shifts_in_game = {}
+        self.shifts_by_period = {}
         self.retrieve_shifts_from_game()
         self.sort_shifts()
         self.players_in_game = {}
@@ -160,9 +159,9 @@ class Game:
 
     def sort_shifts(self, sort_key='end'):
         """Helper function to find the correct placement to"""
-        for period in self.shifts_in_game:
-            for player in self.shifts_in_game[period]:
-                self.shifts_in_game[period][player].sort(key=attrgetter(sort_key))
+        for period in self.shifts_by_period:
+            for player in self.shifts_by_period[period]:
+                self.shifts_by_period[period][player].sort(key=attrgetter(sort_key))
         return self
 
     def retrieve_shifts_from_game(self):
@@ -173,11 +172,11 @@ class Game:
         for shift in self.shift_json['data']:
             temp = self.create_shift(shift)
             # Shifts separated by player in game
-            if temp.period not in self.shifts_in_game:
-                self.shifts_in_game[temp.period] = {}
-            if temp.name not in self.shifts_in_game[temp.period]:
-                self.shifts_in_game[temp.period][temp.name] = []
-            self.shifts_in_game[temp.period][temp.name].append(temp)
+            if temp.period not in self.shifts_by_period:
+                self.shifts_by_period[temp.period] = {}
+            if temp.name not in self.shifts_by_period[temp.period]:
+                self.shifts_by_period[temp.period][temp.name] = []
+            self.shifts_by_period[temp.period][temp.name].append(temp)
         return self
 
     def retrieve_events_in_game(self):
@@ -209,7 +208,7 @@ class Game:
         """
         for i, event_to_parse in enumerate(self.events_in_game):
             if isinstance(event_to_parse, Event):
-                event_to_parse.get_players_for_event(self.shifts_in_game[event_to_parse.period],
+                event_to_parse.get_players_for_event(self.shifts_by_period[event_to_parse.period],
                                                      self.home_goalie.union(self.away_goalie))
                 event_to_parse.determine_event_state()
                 self.events_in_game[i] = event_to_parse
@@ -218,9 +217,9 @@ class Game:
     def get_all_shifts_per_player(self, player_name):
         """Helper function to retrieve all shifts from the game for a given player"""
         all_shifts_by_player = {}  # period:(start,end)
-        for period in self.shifts_in_game:
+        for period in self.shifts_by_period:
             try:
-                for shift in self.shifts_in_game[period][player_name]:
+                for shift in self.shifts_by_period[period][player_name]:
                     if period not in all_shifts_by_player:
                         all_shifts_by_player[period] = []
                     all_shifts_by_player[period].append(shift)
@@ -237,12 +236,21 @@ class Game:
                 shifts_from_player = self.get_all_shifts_per_player(player.name)  # Check every shift from each player
                 for period in shifts_from_player:  # For each period
                     for shift in shifts_from_player[period]:  # For each shift in each period
-                        for other_player in {p.name for p in self.players_in_game[team] if player.name not in p.name}:
+                        temp = [p.name for p in self.players_in_game[team] if player.name not in p.name]
+                        for other_player in temp:
                             try:
                                 other_shifts = self.get_all_shifts_per_player(other_player)[period]
                                 other_index = find_start_index(other_shifts, shift.start)
+                                # TODO: start_index is not guaranteeing correct index is found
+                                '''
+                                Always looking for the LAST shift that is around the bounds for the time in question
+                                Should it be a range of indices?
+                                Lower bound: where shift.start <= time in question
+                                Upper bound: first instance where shift.end >= time in question
+                                '''
                                 other_shift = other_shifts[other_index]
-                                if is_time_within_range(shift.start, other_shift.start, other_shift.end):
+                                if is_time_within_range(shift.start, other_shift.start, other_shift.end) \
+                                        or is_time_within_range(shift.end, other_shift.start, other_shift.end):
                                     # Get time both players were on the ice
                                     time_shared = get_time_shared(shift, other_shift)
                                     if other_player not in player.ice_time_with_players:
