@@ -32,6 +32,12 @@ def find_start_index(shifts_for_player, baseline_time):
     Helper function to find the start index for a players shift related to the event start time
     shifts_for_player is already filtered by period
     """
+    '''
+    New algorithm to find the shift with the closest min(shift.start)to the baseline time?
+    
+    How to stop it from choosing a shift after the time? 
+        If shift.start > baseline -- Move on? Or shift.end?
+    '''
     lower_bound = 0
     for index, shift in enumerate(shifts_for_player):
         if shift.start <= baseline_time:
@@ -39,7 +45,17 @@ def find_start_index(shifts_for_player, baseline_time):
                 lower_bound = index
         else:
             break
-    return lower_bound
+    close_lb = -1
+    closeness = 1000
+    from pynhl.game import subtract_two_time_objects
+    for i, shift in enumerate(shifts_for_player):
+        temp = subtract_two_time_objects(baseline_time, shift.start)
+        if temp < closeness:
+            closeness = temp
+            close_lb = i
+        if shift.end > baseline_time:
+            break
+    return close_lb
 
 
 class Event:

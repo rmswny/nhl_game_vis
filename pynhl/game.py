@@ -241,13 +241,6 @@ class Game:
                             try:
                                 other_shifts = self.get_all_shifts_per_player(other_player)[period]
                                 other_index = find_start_index(other_shifts, shift.start)
-                                # TODO: start_index is not guaranteeing correct index is found
-                                '''
-                                Always looking for the LAST shift that is around the bounds for the time in question
-                                Should it be a range of indices?
-                                Lower bound: where shift.start <= time in question
-                                Upper bound: first instance where shift.end >= time in question
-                                '''
                                 other_shift = other_shifts[other_index]
                                 if is_time_within_range(shift.start, other_shift.start, other_shift.end) \
                                         or is_time_within_range(shift.end, other_shift.start, other_shift.end):
@@ -261,11 +254,10 @@ class Game:
                                     continue  # If they aren't on the ice together, move on
                             except KeyError:  # Catches edge case where player did not have a shift in the same period
                                 continue
-        '''
-        Time together varies greatly between my algo and NST
-        http://naturalstattrick.com/game.php?season=20192020&game=20645
-        Debug!
-        '''
         player.sum_time_together(game_id=self.game_id)
+        """
+        http://naturalstattrick.com/game.php?season=20192020&game=20645 
+        Testing ALL SIT shared ice time!
+        """
         a = 5
         return self
