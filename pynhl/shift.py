@@ -9,28 +9,19 @@ def convert_to_time(str_to_time):
 
 
 class Shift:
-    """
-    Shift that contains general information
-    Things to add:
-    Events that happened during shift
-    Time since previous shift
-    Average duration of shift
-    Average events per shift
-    Average shifts per period
-    """
-
-    def __init__(self, game_id=None, team=None, name=None, period=None, start=None, end=None, duration=None,
-                 score=None):
+    def __init__(self, game_id, home_team, shift_json):
         self.game_id = game_id
-        self.team = team
-        self.name = name
-        self.period = period
-        self.start = convert_to_time(start)
-        self.end = convert_to_time(end)
-        self.duration = duration
-        self.score = score  # If negative, player's team is behind in score, pos they are ahead
+        self.team = shift_json['teamAbbrev']
+        self.player = f"{shift_json['firstName']} {shift_json['lastName']}"
+        self.shift_number_in_game = shift_json['shiftNumber']
+        self.period = int(shift_json['period'])
+        self.start = convert_to_time(shift_json['startTime'])
+        self.end = convert_to_time(shift_json['endTime'])
+        self.duration = shift_json['duration']
         self.duration_to_seconds()
-        self.events = []  # Events that happened during the shift
+        self.score = (shift_json['homeScore'], shift_json['visitingScore'])
+        self.normalize_score(home_team)
+        self.events_during_shift = []  # Events that happened during the shift
 
     def __eq__(self, other):
         if self.period == other.period:
@@ -44,7 +35,7 @@ class Shift:
 
     def __str__(self):
         # return f"{self.name} , {self.period} , {self.start} : {self.end}"
-        return "{}, {}, {}:{}".format(self.name, self.period, self.start, self.end)
+        return "{}, {}, {}:{}".format(self.player, self.period, self.start, self.end)
 
     def __lt__(self, other):
         if isinstance(other, Shift):
@@ -57,6 +48,13 @@ class Shift:
 
     def __gt__(self, other):
         return not (self < other)
+
+    def normalize_score(self, home_team):
+        if self.team == home_team:
+            self.score = self.score[0] - self.score[1]
+        else:
+            self.score = self.score[1] - self.score[0]
+        return self.score
 
     def duration_to_seconds(self):
         """

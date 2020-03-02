@@ -1,3 +1,4 @@
+import pynhl.game
 import datetime
 
 EVENTS_THAT_CAN_CAUSE_A_STOPPAGE = {
@@ -32,29 +33,17 @@ def find_start_index(shifts_for_player, baseline_time):
     Helper function to find the start index for a players shift related to the event start time
     shifts_for_player is already filtered by period
     """
-    '''
-    New algorithm to find the shift with the closest min(shift.start)to the baseline time?
-    
-    How to stop it from choosing a shift after the time? 
-        If shift.start > baseline -- Move on? Or shift.end?
-    '''
-    lower_bound = 0
-    for index, shift in enumerate(shifts_for_player):
-        if shift.start <= baseline_time:
-            if index > lower_bound:
-                lower_bound = index
-        else:
-            break
     close_lb = -1
-    closeness = 1000
-    from pynhl.game import subtract_two_time_objects
-    for i, shift in enumerate(shifts_for_player):
-        temp = subtract_two_time_objects(baseline_time, shift.start)
-        if temp < closeness:
-            closeness = temp
-            close_lb = i
+    min_closeness = 1201
+    for number, shift in shifts_for_player:
+        time_difference = pynhl.game.subtract_two_time_objects(baseline_time, shift.start)
+        if time_difference < min_closeness:
+            min_closeness = time_difference
+            close_lb = number
         if shift.end > baseline_time:
             break
+    if close_lb == -1:
+        raise Exception("Algorithm did not find an index")
     return close_lb
 
 
@@ -198,7 +187,7 @@ class Event:
         """
         for player in shifts_in_period:
             # Find the latest shift where the start is less than the time of the event (ignore everything before/after)
-            shift_index = find_start_index(shifts_in_period[player], self.time)
+            shift_index = find_start_index(shifts_in_period[player].items(), self.time)
             shift_ = shifts_in_period[player][shift_index]
             # If true, player was on for the event. False, ignore and move to the next player
             is_on = is_time_within_range(self.time, shift_.start, shift_.end, self.type_of_event)
