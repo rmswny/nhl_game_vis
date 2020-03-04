@@ -44,15 +44,11 @@ def subtract_two_time_objects(left, right):
 
 
 def get_time_shared(curr_shift, other_shift):
-    """Function to return the time shared while on the ice together"""
     """
-    How to get the time shared?
-    Current method -> find the start/end time when both are on the ice, subtract that differnece, move on
-        but it requires increasing the lower bound and decreasing the upper bound
-        Min : start or end time? 
-        max(start), min(end)
-        subtract that difference!
+    Finds the shared min and shared max, and subtracts the two time objects
+    Returns the value in seconds (timedelta doesn't track minutes/hours)
     """
+
     lower_bound = max(curr_shift.start, other_shift.start)
     upper_bound = min(curr_shift.end, other_shift.end)
     temp = datetime.combine(date.today(), upper_bound) - datetime.combine(date.today(), lower_bound)
@@ -84,7 +80,8 @@ class Game:
         self.cleanup()
         # Extra functionality that doesn't require game/shift json
         self.parse_events_in_game()
-        self.generate_line_times()
+        # self.generate_line_times()
+        self.determine_time_together(self.players_in_game["BUF"][3], self.players_in_game["BUF"][17])
 
     def __str__(self):
         # return f"Game ID: {self.game_id} , Season: {self.game_season} : {self.home_team} " \
@@ -213,5 +210,33 @@ class Game:
             Re-use algorithm to fetch the time shared, if they were ever on the ice together
             
         """
-        a = 5
         return self
+
+    def determine_time_together(self, player, other_player):
+        """
+        Given two player names, fetch all their shifts and determine how much time they shared with each other on each shift
+
+        do it player by player rather than shift by shift for all?
+        """
+        # Retrieve shifts for both players
+        player_shifts = {}
+        other_player_shifts = {}
+        for period in self.shifts_by_period:
+            player_shifts.update(self.shifts_by_period[period][player.name].items())
+            other_player_shifts.update(self.shifts_by_period[period][other_player.name].items())
+        # Iterate through the shifts of player
+        # Determine shared time for each shift, and add time to both players list
+        for shift_num in player_shifts:
+            current_shift = player_shifts[shift_num]
+            other_shift = other_player_shifts[find_start_index(other_player_shifts.items(), current_shift.start)]
+            if is_time_within_range(current_shift.start, other_shift.start, other_shift.end) or \
+                    is_time_within_range(current_shift.end, other_shift.start, other_shift.end):
+                time_shared = get_time_shared(current_shift, other_shift)
+                if other_player.name not in player.ice_time_with_players:
+                    player.ice_time_with_players[other_player.name] = []
+                    other_player.ice_time_with_players[player.name] = []
+                player.ice_time_with_players[other_player.name].append(time_shared)
+                other_player.ice_time_with_players[player.name].append(time_shared)
+        # TOI is significantly different! Algo is off!
+        player.sum_time_together(self.game_id)
+        a = 5
