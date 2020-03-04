@@ -137,9 +137,8 @@ class Game:
             if temp_shift.period not in self.shifts_by_period:
                 self.shifts_by_period[temp_shift.period] = {}
             if temp_shift.player not in self.shifts_by_period[temp_shift.period]:
-                self.shifts_by_period[temp_shift.period][temp_shift.player] = {}
-            # [period][player_name][shift_number_in_game] = shift class
-            self.shifts_by_period[temp_shift.period][temp_shift.player][temp_shift.shift_number_in_game] = temp_shift
+                self.shifts_by_period[temp_shift.period][temp_shift.player] = []
+            self.shifts_by_period[temp_shift.period][temp_shift.player].append(temp_shift)
         return self
 
     def retrieve_events_in_game(self):
@@ -222,21 +221,39 @@ class Game:
         player_shifts = {}
         other_player_shifts = {}
         for period in self.shifts_by_period:
-            player_shifts.update(self.shifts_by_period[period][player.name].items())
-            other_player_shifts.update(self.shifts_by_period[period][other_player.name].items())
+            player_shifts[period] = self.shifts_by_period[period][player.name]
+            other_player_shifts[period] = self.shifts_by_period[period][other_player.name]
         # Iterate through the shifts of player
         # Determine shared time for each shift, and add time to both players list
-        for shift_num in player_shifts:
-            current_shift = player_shifts[shift_num]
-            other_shift = other_player_shifts[find_start_index(other_player_shifts.items(), current_shift.start)]
-            if is_time_within_range(current_shift.start, other_shift.start, other_shift.end) or \
-                    is_time_within_range(current_shift.end, other_shift.start, other_shift.end):
-                time_shared = get_time_shared(current_shift, other_shift)
-                if other_player.name not in player.ice_time_with_players:
-                    player.ice_time_with_players[other_player.name] = []
-                    other_player.ice_time_with_players[player.name] = []
-                player.ice_time_with_players[other_player.name].append(time_shared)
-                other_player.ice_time_with_players[player.name].append(time_shared)
-        # TOI is significantly different! Algo is off!
+        for period in player_shifts.keys():
+            for shift in player_shifts[period]:
+                try:
+                    o_shift = other_player_shifts[period][find_start_index(other_player_shifts[period], shift.start)]
+                    if is_time_within_range(shift.start, o_shift.start, o_shift.end) or \
+                            is_time_within_range(shift.end, o_shift.start, o_shift.end):
+                        time_shared = get_time_shared(shift, o_shift)
+                        if other_player.name not in player.ice_time_with_players:
+                            player.ice_time_with_players[other_player.name] = []
+                            other_player.ice_time_with_players[player.name] = []
+                        player.ice_time_with_players[other_player.name].append(time_shared)
+                        other_player.ice_time_with_players[player.name].append(time_shared)
+                except KeyError:
+                    # Other player did not have a shift in that period
+                    pass
+        '''
+        Testing notes: Jack & Sam
+        Why is Jack missing so many shifts in the second? NOT missing any, 19 shifts overall for Jack
+        So, why is time off? (Getting 16:25 (985), NST has 17:40 (1060))
+        Sam's shifts are out of order, does that affect anything? Nope..
+        
+        Need to do it by hand, it's not making sense. Are we missing shifts? NST has 20 shifts together, so do we
+        How are we missing 75 seconds??
+        75 / 20 = 3.75 seconds per shift...................???? Is NST wrong? 
+        '''
         player.sum_time_together(self.game_id)
+        sum = 0
+        for x in player.ice_time_with_players[other_player.name]:
+            sum += x
+        minutes = player.ice_time_summed[other_player.name][self.game_id] // 60
+        seconds = player.ice_time_summed[other_player.name][self.game_id] - (minutes * 60)
         a = 5

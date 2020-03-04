@@ -35,11 +35,11 @@ def find_start_index(shifts_for_player, baseline_time):
     """
     close_lb = -1
     min_closeness = 1201
-    for number, shift in shifts_for_player:
+    for index, shift in enumerate(shifts_for_player):
         time_difference = pynhl.game.subtract_two_time_objects(baseline_time, shift.start)
         if time_difference < min_closeness:
             min_closeness = time_difference
-            close_lb = number
+            close_lb = index
         if shift.end > baseline_time:
             break
     if close_lb == -1:
@@ -187,7 +187,7 @@ class Event:
         """
         for player in shifts_in_period:
             # Find the latest shift where the start is less than the time of the event (ignore everything before/after)
-            shift_index = find_start_index(shifts_in_period[player].items(), self.time)
+            shift_index = find_start_index(shifts_in_period[player], self.time)
             shift_ = shifts_in_period[player][shift_index]
             # If true, player was on for the event. False, ignore and move to the next player
             is_on = is_time_within_range(self.time, shift_.start, shift_.end, self.type_of_event)

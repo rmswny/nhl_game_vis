@@ -1,12 +1,11 @@
 class Player:
     # Player will have shifts where each shift can have event(s)
     def __init__(self, player_json):
-        self.json_info = player_json
-        self.name = self.json_info["fullName"]
-        self.position = self.json_info["primaryPosition"]["type"]
+        self.name = player_json["fullName"]
+        self.position = player_json["primaryPosition"]["type"]
         self.parse_position_type()
-        self.jersey_num = self.json_info["primaryNumber"]
-        self.team = self.json_info["currentTeam"]["triCode"]
+        self.jersey_num = player_json["primaryNumber"]
+        self.team = player_json["currentTeam"]["triCode"]
 
         # Each shift can have events
         self.shifts = {}  # GameID:[shifts]
@@ -24,9 +23,6 @@ class Player:
         self.ice_time_with_players = {}  # Player Name : [toi_per_game]
         self.ice_time_summed = {}  # Player : Sum_of_TOI
 
-        # After creating the object, remove any unnecessary information
-        self.cleanup()
-
     def __eq__(self, name):
         """
         Two players are equal if name==name, team==team
@@ -40,9 +36,6 @@ class Player:
     def __str__(self):
         # return f"{self.name} : {self.team} : {self.jersey_num}"
         return "{},{},{},{}".format(self.name, self.position, self.team, self.jersey_num)
-
-    def cleanup(self):
-        self.json_info = None
 
     def parse_position_type(self):
         """
