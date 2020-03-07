@@ -8,15 +8,11 @@ EVENTS_THAT_CAN_CAUSE_A_STOPPAGE = {
 }
 
 
-def is_time_within_range(check_time, start_time, end_time, event_=None):
+def time_check_event(check_time, start_time, end_time, event_=None):
     """
-    Some events have the same time as the previous event. This means a stoppage must've occurred.
-    This leads to an error in the conditional statements where some events have >6 players on the ice
-    This function will then ensure which players are on the ice for an event, when the previous event has the same
-    time as the new event
+    Helper function to check whether an event was present during a shift
+    """
 
-    Returns True if player was on during time range, False if not
-    """
     is_player_on = False
     if start_time < check_time < end_time:
         is_player_on = True
@@ -28,22 +24,41 @@ def is_time_within_range(check_time, start_time, end_time, event_=None):
     return is_player_on
 
 
-def find_start_index(shifts_for_player, baseline_time):
+def time_check_shift(shift_1, shift_2):
+    """
+    Helper function to determine whether or not two players were on the ice at a given time
+    """
+    on_together = False
+    """
+    Cases:
+    -Normal case, time falls between the two range
+    -When shift_2 player is already on the ice?
+    -Other cases? 
+        start is before, end2 is before end1        
+    """
+    if shift_2.start <= shift_1.start <= shift_2.end:
+        on_together = True
+    elif shift_2.start <= shift_1.end <= shift_2.end:
+        on_together = True
+    elif shift_1.start <= shift_2.start <= shift_1.end:
+        on_together = True
+    elif shift_1.start <= shift_2.end <= shift_1.end:
+        on_together = True
+
+    return on_together
+
+
+def find_start_index(shifts_for_player, time_check):
     """
     Helper function to find the start index for a players shift related to the event start time
     shifts_for_player is already filtered by period
     """
-    close_lb = -1
-    min_closeness = 1201
+    close_lb = 0
     for index, shift in enumerate(shifts_for_player):
-        time_difference = pynhl.game.subtract_two_time_objects(baseline_time, shift.start)
-        if time_difference < min_closeness:
-            min_closeness = time_difference
+        if shift.end < time_check:
             close_lb = index
-        if shift.end > baseline_time:
+        if shift.end > time_check:
             break
-    if close_lb == -1:
-        raise Exception("Algorithm did not find an index")
     return close_lb
 
 
@@ -169,8 +184,6 @@ class Event:
         self.y_loc = self.event_json['coordinates']['y']
         return self.y_loc
 
-    ## Functions from game.py
-
     def determine_event_state(self):
         """
         Determines the number of skaters on for the event
@@ -190,7 +203,7 @@ class Event:
             shift_index = find_start_index(shifts_in_period[player], self.time)
             shift_ = shifts_in_period[player][shift_index]
             # If true, player was on for the event. False, ignore and move to the next player
-            is_on = is_time_within_range(self.time, shift_.start, shift_.end, self.type_of_event)
+            is_on = time_check_event(self.time, shift_.start, shift_.end, self.type_of_event)
             if is_on:
                 # Add player to the event
                 self.assign_player_to_event(shifts_in_period[player][shift_index], player, goalies)

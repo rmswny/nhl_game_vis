@@ -1,4 +1,4 @@
-from pynhl.event import Event, is_time_within_range, find_start_index
+from pynhl.event import Event, time_check_shift, find_start_index
 from pynhl.player import Player
 from pynhl.shift import Shift
 from datetime import datetime, date, timedelta
@@ -81,7 +81,9 @@ class Game:
         # Extra functionality that doesn't require game/shift json
         self.parse_events_in_game()
         # self.generate_line_times()
-        self.determine_time_together(self.players_in_game["BUF"][3], self.players_in_game["BUF"][17])
+        for p in self.players_in_game["BUF"]:
+            self.determine_time_together(self.players_in_game["BUF"][3], p)
+        # self.determine_time_together(self.players_in_game["BUF"][3], self.players_in_game["BUF"][17])
 
     def __str__(self):
         # return f"Game ID: {self.game_id} , Season: {self.game_season} : {self.home_team} " \
@@ -171,66 +173,76 @@ class Game:
             self.events_in_game[i] = event_to_parse
         return self
 
-    def generate_line_times(self):
-        """
-        Function to generate the amount of time EACH player played with EACH player IF they were on the ice together
-        """
-        for team in self.players_in_game:  # Calculate for each team in game
-            for player in self.players_in_game[team]:  # Calculate for each player on each team
-                for period in self.shifts_by_period.keys():  # by Period in the game
-                    try:
-                        shifts_from_player = self.shifts_by_period[period][player.name]
-                        for shift_num, shift in shifts_from_player.items():
-                            for other_player in [p.name for p in self.players_in_game[team] if
-                                                 player.name not in p.name]:
-                                try:
-                                    other_shifts = self.shifts_by_period[period][other_player]
-                                    other_index = find_start_index(other_shifts.items(), shift.start)
-                                    other_shift = other_shifts[other_index]
-                                    if is_time_within_range(shift.start, other_shift.start, other_shift.end) or \
-                                            is_time_within_range(shift.end, other_shift.start, other_shift.end):
-                                        # Get time both players were on the ice
-                                        time_shared = get_time_shared(shift, other_shift)
-                                        if other_player not in player.ice_time_with_players:
-                                            player.ice_time_with_players[other_player] = []
-                                        # Add time to player object
-                                        player.ice_time_with_players[other_player].append(time_shared)
-                                    else:
-                                        continue  # If they aren't on the ice together, move on
-                                except KeyError:  # Catches edge case where player did not have a shift in the same period
-                                    continue
-                    except KeyError as player_not_in_game:
-                        pass
-        player.sum_time_together(game_id=self.game_id)
-        """
-        http://naturalstattrick.com/game.php?season=20192020&game=20645 
-        How to generate test for two players to ensure correctness:
-            Fetch all shifts for both players,separated by periods in the game
-            Re-use algorithm to fetch the time shared, if they were ever on the ice together
-            
-        """
-        return self
+    # def generate_line_times(self):
+    #     """
+    #     Function to generate the amount of time EACH player played with EACH player IF they were on the ice together
+    #     """
+    #     for team in self.players_in_game:  # Calculate for each team in game
+    #         for player in self.players_in_game[team]:  # Calculate for each player on each team
+    #             for period in self.shifts_by_period.keys():  # by Period in the game
+    #                 try:
+    #                     shifts_from_player = self.shifts_by_period[period][player.name]
+    #                     for shift_num, shift in shifts_from_player.items():
+    #                         for other_player in [p.name for p in self.players_in_game[team] if
+    #                                              player.name not in p.name]:
+    #                             try:
+    #                                 other_shifts = self.shifts_by_period[period][other_player]
+    #                                 other_index = find_start_index(other_shifts.items(), shift.start)
+    #                                 other_shift = other_shifts[other_index]
+    #                                 if is_time_within_range(shift.start, other_shift.start, other_shift.end) or \
+    #                                         is_time_within_range(shift.end, other_shift.start, other_shift.end):
+    #                                     # Get time both players were on the ice
+    #                                     time_shared = get_time_shared(shift, other_shift)
+    #                                     if other_player not in player.ice_time_with_players:
+    #                                         player.ice_time_with_players[other_player] = []
+    #                                     # Add time to player object
+    #                                     player.ice_time_with_players[other_player].append(time_shared)
+    #                                 else:
+    #                                     continue  # If they aren't on the ice together, move on
+    #                             except KeyError:  # Catches edge case where player did not have a shift in the same period
+    #                                 continue
+    #                 except KeyError as player_not_in_game:
+    #                     pass
+    #     player.sum_time_together(game_id=self.game_id)
+    #     return self
 
     def determine_time_together(self, player, other_player):
         """
-        Given two player names, fetch all their shifts and determine how much time they shared with each other on each shift
-
-        do it player by player rather than shift by shift for all?
+        Given two player names, fetch all their shifts and determine how much time they shared
+        Parent function will iterate through all players and call this function
         """
         # Retrieve shifts for both players
+        sums = {other_player.name: [], player.name: []}
         player_shifts = {}
         other_player_shifts = {}
         for period in self.shifts_by_period:
             player_shifts[period] = self.shifts_by_period[period][player.name]
-            other_player_shifts[period] = self.shifts_by_period[period][other_player.name]
+            try:
+                other_player_shifts[period] = self.shifts_by_period[period][other_player.name]
+                sums[player.name].append(sum(
+                    [subtract_two_time_objects(x.end, x.start) for x in self.shifts_by_period[period][player.name]]))
+                sums[other_player.name].append(sum([subtract_two_time_objects(x.end, x.start) for x in
+                                                    self.shifts_by_period[period][other_player.name]]))
+            except KeyError:
+                pass
+
+        # sum_player = sum(sums[player.name])
+        # sum_other = sum(sums[other_player.name])
         # Iterate through the shifts of player
         # Determine shared time for each shift, and add time to both players list
         for period in player_shifts.keys():
             for shift in player_shifts[period]:
                 try:
-                    o_shift = other_player_shifts[period][find_start_index(other_player_shifts[period], shift.start)]
-                    if is_time_within_range(shift.start, o_shift.start, o_shift.end) or \
-                            is_time_within_range(shift.end, o_shift.start, o_shift.end):
+                    # checks the highest index of the shift start and end
+                    '''
+                    I broke the algorithm again
+                    i hate myself and this
+                    taking a break
+                    '''
+                    shift_index = max(find_start_index(other_player_shifts[period], shift.start),
+                                      find_start_index(other_player_shifts[period], shift.end))
+                    o_shift = other_player_shifts[period][shift_index]
+                    if time_check_shift(shift, o_shift):
                         time_shared = get_time_shared(shift, o_shift)
                         if other_player.name not in player.ice_time_with_players:
                             player.ice_time_with_players[other_player.name] = []
@@ -241,19 +253,20 @@ class Game:
                     # Other player did not have a shift in that period
                     pass
         '''
-        Testing notes: Jack & Sam
-        Why is Jack missing so many shifts in the second? NOT missing any, 19 shifts overall for Jack
-        So, why is time off? (Getting 16:25 (985), NST has 17:40 (1060))
-        Sam's shifts are out of order, does that affect anything? Nope..
-        
-        Need to do it by hand, it's not making sense. Are we missing shifts? NST has 20 shifts together, so do we
-        How are we missing 75 seconds??
-        75 / 20 = 3.75 seconds per shift...................???? Is NST wrong? 
+        time is +1 greater than that on NST
+        3:38 as opposed to 4:19 for wilson
+        Missing 10s with Larsson
+        10s with Lazar
+        2 m with McCabe 
         '''
         player.sum_time_together(self.game_id)
-        sum = 0
-        for x in player.ice_time_with_players[other_player.name]:
-            sum += x
-        minutes = player.ice_time_summed[other_player.name][self.game_id] // 60
-        seconds = player.ice_time_summed[other_player.name][self.game_id] - (minutes * 60)
-        a = 5
+        s = 0
+        try:
+            for x in player.ice_time_with_players[other_player.name]:
+                s += x
+            minutes = player.ice_time_summed[other_player.name][self.game_id] // 60
+            seconds = player.ice_time_summed[other_player.name][self.game_id] - (minutes * 60)
+            _time = f"{minutes}:{seconds}"
+            a = 5
+        except KeyError:
+            pass

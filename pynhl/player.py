@@ -1,3 +1,6 @@
+import pynhl.game
+
+
 class Player:
     # Player will have shifts where each shift can have event(s)
     def __init__(self, player_json):
@@ -8,20 +11,20 @@ class Player:
         self.team = player_json["currentTeam"]["triCode"]
 
         # Each shift can have events
-        self.shifts = {}  # GameID:[shifts]
+        self.shifts_per_game = {}  # GameID:[shifts]
         self.direct_events_for = []
         self.direct_events_against = []
         self.events_on_for = []
         self.events_on_against = []
 
         # Calculations/Features
-        self.shifts_per_game = None
         self.average_time_per_shift = None
         self.average_time_since_previous_shift = None
         self.average_events_per_shift = None
         self.most_common_teammates_per_game = {}  # Game:Players
         self.ice_time_with_players = {}  # Player Name : [toi_per_game]
         self.ice_time_summed = {}  # Player : Sum_of_TOI
+        self.ice_time_per_game = {}  # GameID:Total
 
     def __eq__(self, name):
         """
@@ -90,3 +93,16 @@ class Player:
                 self.ice_time_summed[teammate] = {}
             self.ice_time_summed[teammate][game_id] = total
         return self
+
+    def sum_all_shifts_per_game(self, game_id):
+        """
+        Function to sum the shifts in each game to determine total TOI
+        """
+        temp_period_total = []
+        for period in self.shifts_per_game.keys():
+            period_sum = 0
+            for shift in self.shifts_per_game[period]:
+                shared_time = pynhl.game.subtract_two_time_objects(shift.start, shift.end)
+                period_sum += shared_time
+            temp_period_total.append(period_sum)
+        self.ice_time_per_game[game_id] = sum(temp_period_total)
