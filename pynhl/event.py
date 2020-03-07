@@ -24,41 +24,41 @@ def time_check_event(check_time, start_time, end_time, event_=None):
     return is_player_on
 
 
-def time_check_shift(shift_1, shift_2):
+def time_check_shift(p_shift, o_shift):
     """
     Helper function to determine whether or not two players were on the ice at a given time
+    IF SO, then another function is called to find the time shared together
     """
     on_together = False
-    """
-    Cases:
-    -Normal case, time falls between the two range
-    -When shift_2 player is already on the ice?
-    -Other cases? 
-        start is before, end2 is before end1        
-    """
-    if shift_2.start <= shift_1.start <= shift_2.end:
+    if o_shift.start <= p_shift.start <= o_shift.end:
+        # Standard case,
         on_together = True
-    elif shift_2.start <= shift_1.end <= shift_2.end:
+    elif o_shift.start <= p_shift.end <= o_shift.end:
         on_together = True
-    elif shift_1.start <= shift_2.start <= shift_1.end:
+    elif p_shift.start <= o_shift.start <= p_shift.end:
         on_together = True
-    elif shift_1.start <= shift_2.end <= shift_1.end:
+    elif p_shift.start <= o_shift.end <= p_shift.end:
         on_together = True
 
     return on_together
 
 
-def find_start_index(shifts_for_player, time_check):
+def find_closest_shift_index(shifts_for_player, time_check):
     """
-    Helper function to find the start index for a players shift related to the event start time
-    shifts_for_player is already filtered by period
+    Finds the last case where time_check < shift.start
+    Logic: The time can not occur after the shift, therefore there is no reason to check every shift in the list
+    nor check more than one shift. Any shift that starts after the shift is ignored. Any shift that ends before
+    time_check is also ignored
     """
     close_lb = 0
     for index, shift in enumerate(shifts_for_player):
-        if shift.end < time_check:
+        if time_check > shift.start:
+            # Keeps incrementing the index value until a shift begins later than the time being checked
             close_lb = index
-        if shift.end > time_check:
-            break
+        if shift.start > time_check:
+            # Sometimes shifts are out of order, this second check ensures that the loop is only done in these cases
+            if index < len(shifts_for_player) - 1 and shifts_for_player[index + 1].start > time_check:
+                break
     return close_lb
 
 
@@ -200,7 +200,7 @@ class Event:
         """
         for player in shifts_in_period:
             # Find the latest shift where the start is less than the time of the event (ignore everything before/after)
-            shift_index = find_start_index(shifts_in_period[player], self.time)
+            shift_index = find_closest_shift_index(shifts_in_period[player], self.time)
             shift_ = shifts_in_period[player][shift_index]
             # If true, player was on for the event. False, ignore and move to the next player
             is_on = time_check_event(self.time, shift_.start, shift_.end, self.type_of_event)

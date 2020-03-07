@@ -1,4 +1,4 @@
-from pynhl.event import Event, time_check_shift, find_start_index
+from pynhl.event import Event, time_check_shift, find_closest_shift_index
 from pynhl.player import Player
 from pynhl.shift import Shift
 from datetime import datetime, date, timedelta
@@ -225,9 +225,6 @@ class Game:
                                                     self.shifts_by_period[period][other_player.name]]))
             except KeyError:
                 pass
-
-        # sum_player = sum(sums[player.name])
-        # sum_other = sum(sums[other_player.name])
         # Iterate through the shifts of player
         # Determine shared time for each shift, and add time to both players list
         for period in player_shifts.keys():
@@ -239,8 +236,8 @@ class Game:
                     i hate myself and this
                     taking a break
                     '''
-                    shift_index = max(find_start_index(other_player_shifts[period], shift.start),
-                                      find_start_index(other_player_shifts[period], shift.end))
+                    shift_index = max(find_closest_shift_index(other_player_shifts[period], shift.start),
+                                      find_closest_shift_index(other_player_shifts[period], shift.end))
                     o_shift = other_player_shifts[period][shift_index]
                     if time_check_shift(shift, o_shift):
                         time_shared = get_time_shared(shift, o_shift)
@@ -252,18 +249,15 @@ class Game:
                 except KeyError:
                     # Other player did not have a shift in that period
                     pass
-        '''
-        time is +1 greater than that on NST
-        3:38 as opposed to 4:19 for wilson
-        Missing 10s with Larsson
-        10s with Lazar
-        2 m with McCabe 
-        '''
+
+            '''
+            time is +1 greater than that on NST
+            10s with Lazar
+            2 m with McCabe 
+            '''
         player.sum_time_together(self.game_id)
-        s = 0
         try:
-            for x in player.ice_time_with_players[other_player.name]:
-                s += x
+            sums_temp = sum([x for x in player.ice_time_with_players[other_player.name]])
             minutes = player.ice_time_summed[other_player.name][self.game_id] // 60
             seconds = player.ice_time_summed[other_player.name][self.game_id] - (minutes * 60)
             _time = f"{minutes}:{seconds}"
