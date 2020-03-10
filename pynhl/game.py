@@ -4,10 +4,6 @@ from pynhl.shift import Shift
 from datetime import datetime, date, timedelta
 from operator import attrgetter, itemgetter
 
-# STOPPAGES = {
-#     "Stoppage",
-#     "Period Start"
-# }
 TRACKED_EVENTS = {
     "Shot",
     "Faceoff",
@@ -52,7 +48,32 @@ def get_time_shared(curr_shift, other_shift):
     lower_bound = max(curr_shift.start, other_shift.start)
     upper_bound = min(curr_shift.end, other_shift.end)
     temp = datetime.combine(date.today(), upper_bound) - datetime.combine(date.today(), lower_bound)
-    return temp.seconds
+    return temp.seconds, lower_bound, upper_bound
+
+
+def split_score_or_state_times(total_time, events_container, lb, ub):
+    """
+    Function to iterate through interval_dict (time:score OR state)
+    and find the time per state/score
+    ub/lb == datetime.time() objects of minutes:seconds
+
+    This function is used in conjunction with determining the score & state of each second the players
+    are on the ice together
+    """
+    temp = {v: 0 for v, t in events_container}
+    for i_value, i_time in events_container:
+        old_value = temp[i_value]
+        change = subtract_two_time_objects(i_time, lb)
+        temp[i_value] = (old_value + change)
+        # value will be > total_time: BAD LOGIC
+        '''
+        first index will always be a reference point for score/state -- time is irrelevant
+        how to correctly get time:
+            events_container[>=1] - lb => for first event
+            for all other events => events_container[current].time - events_container[current-1].time
+            += that value
+        '''
+    return temp
 
 
 class Game:
@@ -72,6 +93,7 @@ class Game:
         # Players and shifts for each game
         self.shifts_by_period = {}
         self.retrieve_shifts_from_game()
+        self.active_players = self.retrieve_active_players()
         self.players_in_game = {}
         self.retrieve_players_in_game()
         self.events_in_game = []
@@ -153,9 +175,9 @@ class Game:
                 add_events(temp_event)
         try:
             self.get_final_score(temp_event)
-        except UnboundLocalError as no_events_in_game:
-            print("Somehow not one event was in a game")
-            print(no_events_in_game)
+        except UnboundLocalError:
+            raise SystemExit("No events in game???")
+        self.events_in_game = sorted(self.events_in_game, key=attrgetter("period", "time"))
         return self
 
     def parse_events_in_game(self):
@@ -190,6 +212,56 @@ class Game:
                 pass
         return player_shifts, other_player_shifts
 
+    def retrieve_active_players(self):
+        """
+        Generates a set of player names for all players that had AT LEAST ONE shift in the game
+        """
+        temp_active = {}
+        for period in self.shifts_by_period:
+            for player in self.shifts_by_period[period]:
+                curr_player = self.shifts_by_period[period][player][0]
+                if curr_player.team not in temp_active:
+                    temp_active[curr_player.team] = set()
+                if curr_player.player not in temp_active[curr_player.team]:
+                    temp_active[curr_player.team].add(curr_player.player)
+        return temp_active
+
+    def needs_a_new_name_for_shared_toi(self):
+        """
+        driver function to iterate through players for shared TOI
+        """
+        team = "BUF"  # testing variable
+        # for team in self.players_in_game:
+        for player in self.players_in_game[team]:
+            self.active_players[team].remove(player)  # Remove the player being checked
+            for other_player in self.active_players[team]:
+                other_p = next((x for x in self.players_in_game[team] if other_player in x.name))
+                self.determine_time_together(player, other_p)
+
+    def retrieve_score_and_state_during_interval(self, shift_lb, shift_ub, shift_period):
+        """
+        Determines the score and state (5v5, 5v4, 3v3 etc) during a time interval (shift.start,shift.end)
+        Accounts for changes during the interval
+
+        shift_ is a time object of minutes:seconds
+        """
+        states_during_interval = ['']  # state:time
+        score_during_interval = ['']  # score:time
+        for i, event in enumerate(self.events_in_game):
+            if event.period == shift_period:
+                if shift_lb <= event.time <= shift_ub:
+                    states_during_interval.append((event.state, event.time))
+                    score_during_interval.append((event.score, event.time))
+                elif event.time < shift_lb:
+                    # Get state of event JUST BEFORE the interval
+                    states_during_interval[0] = (event.state, event.time)
+                    score_during_interval[0] = (event.score, event.time)
+                    if len(score_during_interval) > 1 or len(states_during_interval) > 1:
+                        raise SystemExit("This should never be true!")
+            elif event.period > shift_period:
+                break
+        return states_during_interval, score_during_interval
+
     def determine_time_together(self, player, other_player):
         """
         Given two player names, fetch all their shifts and determine how much time they shared
@@ -198,15 +270,24 @@ class Game:
         player_shifts, other_player_shifts = self.retrieve_shifts_for_two_players(player.name, other_player.name)
         for period, shifts in player_shifts.items():
             for shift in shifts:
+                # Finds time shared
                 overlapping_shifts = find_overlapping_shifts(shift, other_player_shifts[period])  # set of indices
                 for s in overlapping_shifts:
+                    # shift index where players are on the ice together
                     o_shift = other_player_shifts[period][s]
-                    time_shared = get_time_shared(shift, o_shift)
-                    if other_player.name not in player.ice_time_with_players:
-                        player.ice_time_with_players[other_player.name] = []
-                        other_player.ice_time_with_players[player.name] = []
-                    player.ice_time_with_players[other_player.name].append(time_shared)
-                    other_player.ice_time_with_players[player.name].append(time_shared)
+                    # Total time from time together
+                    time_shared, shared_lb, shared_ub = get_time_shared(shift, o_shift)
+                    if time_shared > 0:
+                        states, scores = self.retrieve_score_and_state_during_interval(shared_lb, shared_ub,
+                                                                                       shift.period)
+                        split_states = split_score_or_state_times(time_shared, states, shared_lb, shared_ub)
+                        split_scores = split_score_or_state_times(time_shared, scores, shared_lb, shared_ub)
+                        if other_player.name not in player.ice_time_with_players:
+                            player.ice_time_with_players[other_player.name] = []
+                            other_player.ice_time_with_players[player.name] = []
+                        player.ice_time_with_players[other_player.name].append(time_shared)
+                        other_player.ice_time_with_players[player.name].append(time_shared)
+
         # Testing stuff here, can remove this later
         player.sum_time_together(self.game_id)
         try:
@@ -218,30 +299,3 @@ class Game:
             return self
         except KeyError:
             pass
-
-    def retrieve_active_players_in_game(self):
-        """
-        Generates a set of player names for all players that had AT LEAST ONE shift in the game
-        """
-        active_players = {}
-        for period in self.shifts_by_period:
-            for player in self.shifts_by_period[period]:
-                curr_player = self.shifts_by_period[period][player][0]
-                if curr_player.team not in active_players:
-                    active_players[curr_player.team] = set()
-                if curr_player.player not in active_players[curr_player.team]:
-                    active_players[curr_player.team].add(curr_player.player)
-        return active_players
-
-    def needs_a_new_name_for_shared_toi(self):
-        """
-        driver function to iterate through players for shared TOI
-        """
-        players_to_compare = self.retrieve_active_players_in_game()  # Players with >0 number of shifts
-        team = "BUF"
-        # for team in self.players_in_game:
-        for player in self.players_in_game[team]:
-            players_to_compare[team].remove(player)  # Remove the player being checked
-            for other_player in players_to_compare[team]:
-                other_p = next((x for x in self.players_in_game[team] if other_player in x.name))
-                self.determine_time_together(player, other_p)
