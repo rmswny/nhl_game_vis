@@ -165,6 +165,10 @@ class Game:
         """
         for i, event_to_parse in enumerate(self.events_in_game):
             a = 5
+            """
+            Checking each event to determine who is on the ice
+            The inputs are the time of the input and the shifts for all players
+            """
             event_to_parse.get_players_for_event(self.shifts_by_period[event_to_parse.period],
                                                  self.home_goalie.union(self.away_goalie))
             event_to_parse.determine_event_state()

@@ -55,6 +55,7 @@ def find_overlapping_shifts(player_shift, other_shifts):
     """
     indices = set()
     for index, other_shift in enumerate(other_shifts):
+        # How to handle both shifts and time objects? Probably cannot -- separate functions!
         if time_check_shift(player_shift, other_shift):
             # on the ice together!
             indices.add(index)
@@ -199,31 +200,32 @@ class Event:
         """
         for player in shifts_in_period:
             # Find the latest shift where the start is less than the time of the event (ignore everything before/after)
-            overlapping_shifts = find_overlapping_shifts(self.time, shifts_in_period[player])
-            if overlapping_shifts:
-                a = 5
-                shift_ = shifts_in_period[player][overlapping_shifts]
+            """
+            self.time holds event time
+            holds all the shifts in shifts_in_period
+            for each shift, check if one shift overlaps the event time
+                if shift does, add them to the event object
+            """
+            for shift in shifts_in_period[player]:
+                check = time_check_event(self.time, shift.start, shift.end)
+                if time_check_event(self.time, shift.start, shift.end):
+                    # This condition says THIS SHIFT was ON for THIS EVENT
+                    # Therefore, add the player to the event!
+                    self.assign_player_to_event(shift.player, shift.team, goalies)
+                    a = 5
                 # If true, player was on for the event. False, ignore and move to the next player
-                is_on = time_check_event(self.time, shift_.start, shift_.end, self.type_of_event)
-                if is_on:
-                    # Add player to the event
-                    self.assign_player_to_event(shifts_in_period[player][overlapping_shifts], player, goalies)
         return self
 
-    def assign_player_to_event(self, current_shift, current_player, goalies):
+    def assign_player_to_event(self, player_name, team_of_player, goalies):
         """
         Helper function to assign player to the correct team
         Previous functions DETERMINE whether player SHOULD be added to event or not
-
-        current_shift: Shift object
-        current_event: Event object
-        current_player: Player object
         """
-        if current_player not in goalies:
-            if current_shift.team == self.team_of_player:
-                self.players_on_for.append(current_player)
+        if player_name not in goalies:
+            if team_of_player == self.team_of_player:
+                self.players_on_for.append(player_name)
             else:
-                self.players_on_against.append(current_player)
+                self.players_on_against.append(player_name)
             return self
 
     def are_goalies_on(self, goalies):
