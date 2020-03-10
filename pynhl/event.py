@@ -31,7 +31,6 @@ def time_check_shift(p_shift, o_shift):
     """
     on_together = False
     if o_shift.start <= p_shift.start <= o_shift.end:
-        # Standard case,
         on_together = True
     elif o_shift.start <= p_shift.end <= o_shift.end:
         on_together = True
@@ -43,23 +42,23 @@ def time_check_shift(p_shift, o_shift):
     return on_together
 
 
-def find_closest_shift_index(shifts_for_player, time_check):
+def find_overlapping_shifts(player_shift, other_shifts):
     """
-    Finds the last case where time_check < shift.start
-    Logic: The time can not occur after the shift, therefore there is no reason to check every shift in the list
-    nor check more than one shift. Any shift that starts after the shift is ignored. Any shift that ends before
-    time_check is also ignored
+    Function will determine if ANY shift occurs doing another shift
+    And will find the total time, over (possibly) more than one shift that is shared
+    between two players
+
+    Helper function that iterates through a list of shifts (other_shifts) to compare to player_shift
+    Inputs are already separated by period & team to ensure minimal comparisons are needed
+
+    returns the indices where shifts are overlapping
     """
-    close_lb = 0
-    for index, shift in enumerate(shifts_for_player):
-        if time_check > shift.start:
-            # Keeps incrementing the index value until a shift begins later than the time being checked
-            close_lb = index
-        if shift.start > time_check:
-            # Sometimes shifts are out of order, this second check ensures that the loop is only done in these cases
-            if index < len(shifts_for_player) - 1 and shifts_for_player[index + 1].start > time_check:
-                break
-    return close_lb
+    indices = set()
+    for index, other_shift in enumerate(other_shifts):
+        if time_check_shift(player_shift, other_shift):
+            # on the ice together!
+            indices.add(index)
+    return indices
 
 
 class Event:
@@ -200,13 +199,15 @@ class Event:
         """
         for player in shifts_in_period:
             # Find the latest shift where the start is less than the time of the event (ignore everything before/after)
-            shift_index = find_closest_shift_index(shifts_in_period[player], self.time)
-            shift_ = shifts_in_period[player][shift_index]
-            # If true, player was on for the event. False, ignore and move to the next player
-            is_on = time_check_event(self.time, shift_.start, shift_.end, self.type_of_event)
-            if is_on:
-                # Add player to the event
-                self.assign_player_to_event(shifts_in_period[player][shift_index], player, goalies)
+            overlapping_shifts = find_overlapping_shifts(self.time, shifts_in_period[player])
+            if overlapping_shifts:
+                a = 5
+                shift_ = shifts_in_period[player][overlapping_shifts]
+                # If true, player was on for the event. False, ignore and move to the next player
+                is_on = time_check_event(self.time, shift_.start, shift_.end, self.type_of_event)
+                if is_on:
+                    # Add player to the event
+                    self.assign_player_to_event(shifts_in_period[player][overlapping_shifts], player, goalies)
         return self
 
     def assign_player_to_event(self, current_shift, current_player, goalies):

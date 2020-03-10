@@ -1,13 +1,13 @@
-from pynhl.event import Event, time_check_shift, find_closest_shift_index
+from pynhl.event import Event, time_check_shift, find_overlapping_shifts
 from pynhl.player import Player
 from pynhl.shift import Shift
 from datetime import datetime, date, timedelta
 from operator import attrgetter, itemgetter
 
-STOPPAGES = {
-    "Stoppage",
-    "Period Start"
-}
+# STOPPAGES = {
+#     "Stoppage",
+#     "Period Start"
+# }
 TRACKED_EVENTS = {
     "Shot",
     "Faceoff",
@@ -56,7 +56,7 @@ def get_time_shared(curr_shift, other_shift):
 
 
 class Game:
-    # Game will have Players who will have shifts and each shift can/will have event(s)
+    # Game will have Players who will have shifts and each shift can have event(s)
 
     def __init__(self, game_json, shift_json):
         # Basic game information
@@ -80,10 +80,7 @@ class Game:
         self.cleanup()
         # Extra functionality that doesn't require game/shift json
         self.parse_events_in_game()
-        # self.generate_line_times()
-        for p in self.players_in_game["BUF"]:
-            self.determine_time_together(self.players_in_game["BUF"][3], p)
-        # self.determine_time_together(self.players_in_game["BUF"][3], self.players_in_game["BUF"][17])
+        self.needs_a_new_name_for_shared_toi()
 
     def __str__(self):
         # return f"Game ID: {self.game_id} , Season: {self.game_season} : {self.home_team} " \
@@ -167,44 +164,12 @@ class Game:
         :return:
         """
         for i, event_to_parse in enumerate(self.events_in_game):
+            a = 5
             event_to_parse.get_players_for_event(self.shifts_by_period[event_to_parse.period],
                                                  self.home_goalie.union(self.away_goalie))
             event_to_parse.determine_event_state()
             self.events_in_game[i] = event_to_parse
         return self
-
-    # def generate_line_times(self):
-    #     """
-    #     Function to generate the amount of time EACH player played with EACH player IF they were on the ice together
-    #     """
-    #     for team in self.players_in_game:  # Calculate for each team in game
-    #         for player in self.players_in_game[team]:  # Calculate for each player on each team
-    #             for period in self.shifts_by_period.keys():  # by Period in the game
-    #                 try:
-    #                     shifts_from_player = self.shifts_by_period[period][player.name]
-    #                     for shift_num, shift in shifts_from_player.items():
-    #                         for other_player in [p.name for p in self.players_in_game[team] if
-    #                                              player.name not in p.name]:
-    #                             try:
-    #                                 other_shifts = self.shifts_by_period[period][other_player]
-    #                                 other_index = find_start_index(other_shifts.items(), shift.start)
-    #                                 other_shift = other_shifts[other_index]
-    #                                 if is_time_within_range(shift.start, other_shift.start, other_shift.end) or \
-    #                                         is_time_within_range(shift.end, other_shift.start, other_shift.end):
-    #                                     # Get time both players were on the ice
-    #                                     time_shared = get_time_shared(shift, other_shift)
-    #                                     if other_player not in player.ice_time_with_players:
-    #                                         player.ice_time_with_players[other_player] = []
-    #                                     # Add time to player object
-    #                                     player.ice_time_with_players[other_player].append(time_shared)
-    #                                 else:
-    #                                     continue  # If they aren't on the ice together, move on
-    #                             except KeyError:  # Catches edge case where player did not have a shift in the same period
-    #                                 continue
-    #                 except KeyError as player_not_in_game:
-    #                     pass
-    #     player.sum_time_together(game_id=self.game_id)
-    #     return self
 
     def determine_time_together(self, player, other_player):
         """
@@ -230,14 +195,8 @@ class Game:
         for period in player_shifts.keys():
             for shift in player_shifts[period]:
                 try:
-                    # checks the highest index of the shift start and end
-                    '''
-                    I broke the algorithm again
-                    i hate myself and this
-                    taking a break
-                    '''
-                    shift_index = max(find_closest_shift_index(other_player_shifts[period], shift.start),
-                                      find_closest_shift_index(other_player_shifts[period], shift.end))
+                    a = 5
+                    shift_index = find_overlapping_shifts(shift, other_player_shifts[period])  # set of indices
                     o_shift = other_player_shifts[period][shift_index]
                     if time_check_shift(shift, o_shift):
                         time_shared = get_time_shared(shift, o_shift)
@@ -250,11 +209,6 @@ class Game:
                     # Other player did not have a shift in that period
                     pass
 
-            '''
-            time is +1 greater than that on NST
-            10s with Lazar
-            2 m with McCabe 
-            '''
         player.sum_time_together(self.game_id)
         try:
             sums_temp = sum([x for x in player.ice_time_with_players[other_player.name]])
@@ -264,3 +218,34 @@ class Game:
             a = 5
         except KeyError:
             pass
+        '''
+        Let's check TOI for each player in game, then move to  # of players on ice and trailing/leading/even
+        for each second during the check
+        '''
+
+    def retrieve_active_players_in_game(self):
+        """
+        Generates a set of player names for all players that had AT LEAST ONE shift in the game
+        """
+        active_players = {}
+        for period in self.shifts_by_period:
+            for player in self.shifts_by_period[period]:
+                curr_player = self.shifts_by_period[period][player][0]
+                if curr_player.team not in active_players:
+                    active_players[curr_player.team] = set()
+                if curr_player.player not in active_players[curr_player.team]:
+                    active_players[curr_player.team].add(curr_player.player)
+        return active_players
+
+    def needs_a_new_name_for_shared_toi(self):
+        """
+        driver function to iterate through players for shared TOI
+        """
+        players_to_compare = self.retrieve_active_players_in_game()  # Players with >0 number of shifts
+        team = "BUF"
+        # for team in self.players_in_game:
+        for player in self.players_in_game[team]:
+            players_to_compare[team].remove(player)  # Remove the player being checked
+            for other_player in players_to_compare[team]:
+                other_p = next((x for x in self.players_in_game[team] if other_player in x.name))
+                self.determine_time_together(player, other_p)
