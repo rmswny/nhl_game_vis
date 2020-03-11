@@ -71,11 +71,10 @@ class Event:
         self.event_json = event_json
         # Attributes from the JSON
         self.type_of_event = self.get_type()
-        self.players_direct_for = []
-        self.players_direct_against = []
-        self.players_on_for = []
-        self.players_on_against = []
-        self.get_players()
+        self.players_direct_for = set()
+        self.players_direct_against = set()
+        self.players_on_for = set()
+        self.players_on_against = set()
         self.team_of_player = self.get_team()
         self.period = self.get_period()
         self.time = self.get_time()
@@ -167,7 +166,7 @@ class Event:
         """
         Adds the score at the time of the event
         """
-        self.score = self.event_json['about']['goals']['away'], self.event_json['about']['goals']['home']
+        self.score = self.event_json['about']['goals']['home'], self.event_json['about']['goals']['away']
         return self.score
 
     def get_x(self):
@@ -184,14 +183,18 @@ class Event:
         self.y_loc = self.event_json['coordinates']['y']
         return self.y_loc
 
-    def determine_event_state(self):
+    def determine_event_state(self, is_for_home_team):
         """
         Determines the number of skaters on for the event
         6v5 / 5v5 / 4v4 / 5v4 / 4v3 / etc
+
+        is_for_home_team checks if PLAYER_DIRECT_FOR.TEAM == GAME.HOME_TEAM
+        if true -> for == home_team, false -> against == home_team
         """
-        # Finds the goalies currently on the ice, in the case of injury/switches
-        # Fetch number of skates for home/away team
-        self.state = "{}v{}".format(len(self.players_on_for), len(self.players_on_against))
+        if is_for_home_team:
+            self.state = f"{len(self.players_on_for)}v{len(self.players_on_against)}"
+        else:
+            self.state = f"{len(self.players_on_against)}v{len(self.players_on_for)}"
         return self
 
     def get_players_for_event(self, shifts_in_period, goalies):
@@ -200,19 +203,9 @@ class Event:
         """
         for player in shifts_in_period:
             # Find the latest shift where the start is less than the time of the event (ignore everything before/after)
-            """
-            self.time holds event time
-            holds all the shifts in shifts_in_period
-            for each shift, check if one shift overlaps the event time
-                if shift does, add them to the event object
-            """
             for shift in shifts_in_period[player]:
-                check = time_check_event(self.time, shift.start, shift.end)
                 if time_check_event(self.time, shift.start, shift.end):
-                    # This condition says THIS SHIFT was ON for THIS EVENT
-                    # Therefore, add the player to the event!
                     self.assign_player_to_event(shift.player, shift.team, goalies)
-                    a = 5
                 # If true, player was on for the event. False, ignore and move to the next player
         return self
 
@@ -223,9 +216,9 @@ class Event:
         """
         if player_name not in goalies:
             if team_of_player == self.team_of_player:
-                self.players_on_for.append(player_name)
+                self.players_on_for.add(player_name)
             else:
-                self.players_on_against.append(player_name)
+                self.players_on_against.add(player_name)
             return self
 
     def are_goalies_on(self, goalies):

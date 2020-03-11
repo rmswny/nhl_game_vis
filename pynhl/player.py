@@ -17,21 +17,25 @@ class Player:
         self.events_on_for = []
         self.events_on_against = []
 
-        # Calculations/Features
-        self.average_time_per_shift = None
-        self.average_time_since_previous_shift = None
-        self.average_events_per_shift = None
-        self.most_common_teammates_per_game = {}  # Game:Players
-        self.ice_time_with_players = {}  # Player Name : [toi_per_game]
-        self.ice_time_summed = {}  # Player : Sum_of_TOI
-        self.ice_time_per_game = {}  # GameID:Total
+        # {GameID}{Player Name} = [toi_by_shift]
+        self.ice_time_with_players = {}
+        self.ice_time_with_players_states = {}
+        self.ice_time_with_players_scores = {}
 
-    def __eq__(self, name):
-        """
-        Two players are equal if name==name, team==team
-        How to check for it existing other than ensuring a Player object is created
-        """
-        return self.name == name
+        # Calculations/Features
+        # self.average_time_per_shift = None
+        # self.average_time_since_previous_shift = None
+        # self.average_events_per_shift = None
+        # self.most_common_teammates_per_game = {}  # Game:Players
+        # self.ice_time_per_game = {}  # GameID:Total
+
+    def __eq__(self, other):
+        if isinstance(other, Player):
+            return self.name == other.name and self.team == other.team
+        elif isinstance(other, str):
+            return self.name == other
+        else:
+            raise SystemExit("Not implemented for this type => {}".format(type(other)))
 
     def __hash__(self):
         return hash(self.name)
@@ -55,6 +59,56 @@ class Player:
         else:
             raise NotImplementedError
         return self.position
+
+    def sum_time_together(self, game_id):
+        """
+        Function to sum the values in ice_time_with_players
+        Separated by player, by game
+        """
+        for teammate in self.ice_time_with_players:
+            total = sum(self.ice_time_with_players[teammate])
+            if teammate not in self.ice_time_summed:
+                self.ice_time_summed[teammate] = {}
+            self.ice_time_summed[teammate][game_id] = total
+        return self
+
+    def sum_all_shifts_per_game(self, game_id):
+        """
+        Function to sum the shifts in each game to determine total TOI
+        """
+        temp_period_total = []
+        for period in self.shifts_per_game.keys():
+            period_sum = 0
+            for shift in self.shifts_per_game[period]:
+                shared_time = pynhl.game.subtract_two_time_objects(shift.start, shift.end)
+                period_sum += shared_time
+            temp_period_total.append(period_sum)
+        self.ice_time_per_game[game_id] = sum(temp_period_total)
+
+    def add_toi_by_states(self, game_id, dict_states, other_player):
+        """
+        Mimics toi_by_scores but does it for states as a key, rather than score
+        """
+
+    def add_toi_by_scores(self, game_id, dict_scores, other_player):
+        """
+        Adds the Game-State-Score-Time separated values from a game to the player object
+
+        Requirements - GameID, dicts of states & scores, and the other player
+        """
+        # player.ice_time_with_players = {Game_ID}{Score}{Other_Player_Name}
+        # Setup
+        if game_id not in self.ice_time_with_players_scores:
+            self.ice_time_with_players_scores[game_id] = {}
+        if other_player not in self.ice_time_with_players_scores[game_id]:
+            self.ice_time_with_players_scores[game_id][other_player] = {}  # Score:[TOI]
+
+        for score, _time in dict_scores.items():
+            if score not in self.ice_time_with_players_scores[game_id][other_player]:
+                self.ice_time_with_players_scores[game_id][other_player][score] = []
+            self.ice_time_with_players_scores[game_id][other_player][score].append(_time)
+        # Update sum?
+        return self
 
     def retrieve_shifts_from_game(self, shifts_from_game):
         """Function to grab all the shifts from a game object"""
@@ -81,28 +135,3 @@ class Player:
         :return:
         """
         pass
-
-    def sum_time_together(self, game_id):
-        """
-        Function to sum the values in ice_time_with_players
-        Separated by player, by game
-        """
-        for teammate in self.ice_time_with_players:
-            total = sum(self.ice_time_with_players[teammate])
-            if teammate not in self.ice_time_summed:
-                self.ice_time_summed[teammate] = {}
-            self.ice_time_summed[teammate][game_id] = total
-        return self
-
-    def sum_all_shifts_per_game(self, game_id):
-        """
-        Function to sum the shifts in each game to determine total TOI
-        """
-        temp_period_total = []
-        for period in self.shifts_per_game.keys():
-            period_sum = 0
-            for shift in self.shifts_per_game[period]:
-                shared_time = pynhl.game.subtract_two_time_objects(shift.start, shift.end)
-                period_sum += shared_time
-            temp_period_total.append(period_sum)
-        self.ice_time_per_game[game_id] = sum(temp_period_total)
