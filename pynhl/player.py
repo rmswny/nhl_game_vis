@@ -97,16 +97,16 @@ class Player:
         Requirements - GameID, dicts of states & scores, and the other player
         """
         # player.ice_time_with_players = {Game_ID}{Score}{Other_Player_Name}
-        # Setup
         if game_id not in self.ice_time_with_players_scores:
             self.ice_time_with_players_scores[game_id] = {}
         if other_player not in self.ice_time_with_players_scores[game_id]:
             self.ice_time_with_players_scores[game_id][other_player] = {}  # Score:[TOI]
-
         for score, _time in dict_scores.items():
             if score not in self.ice_time_with_players_scores[game_id][other_player]:
                 self.ice_time_with_players_scores[game_id][other_player][score] = []
             self.ice_time_with_players_scores[game_id][other_player][score].append(_time)
+            # TODO: Can we somehow maintain the sum here?
+            a = 5
         # Update sum?
         return self
 

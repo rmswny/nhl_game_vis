@@ -2,7 +2,7 @@ from pynhl.event import Event, find_overlapping_shifts
 from pynhl.player import Player
 from pynhl.shift import Shift
 from datetime import datetime, date, timedelta
-from operator import attrgetter, itemgetter
+from operator import attrgetter
 from copy import deepcopy
 
 TRACKED_EVENTS = {
@@ -61,7 +61,7 @@ def split_score_or_state_times(total_time, events_container, lb, ub):
     This function is used in conjunction with determining the score & state of each second the players
     are on the ice together
     """
-    reference_time = events_container[0]
+    # reference_time = events_container[0]
     if len(events_container) == 1:
         # No events, total_time == the amount of time at the previous score & state
         temp = {v: total_time for v, t in events_container}
@@ -84,6 +84,20 @@ def split_score_or_state_times(total_time, events_container, lb, ub):
         # Set the new value, should == total_time
         temp[score_or_state] = (old_value + interval_to_add)
     return temp
+
+
+def seconds_to_minutes(seconds):
+    """
+    Takes an int input (seconds) and converts to time() object of minutes/seconds
+    NHL does not deal with hours so ignoring this functionality
+    """
+    if isinstance(seconds, int):
+        minutes = seconds // 60
+        seconds = seconds - (minutes * 60)
+        time_string = f"{minutes}:{seconds}"
+        return datetime.strptime(time_string, "%M:%S").time()
+    else:
+        raise SystemExit("Incorrect type for function, must be int")
 
 
 class Game:
