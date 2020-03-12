@@ -269,6 +269,7 @@ class Game:
         """
         driver function to iterate through players for shared TOI
         """
+        # Todo: Remove goalies?
         temp_active = deepcopy(self.active_players)
         team = "BUF"  # testing variable
         # for team in self.players_in_game:
@@ -309,6 +310,7 @@ class Game:
         """
         overlapping_shifts = find_overlapping_shifts(shift, other_player_shifts)  # set of indices
         split_states, split_scores = {}, {}
+        time_shared = 0
         for s in overlapping_shifts:
             o_shift = other_player_shifts[s]
             time_shared, shared_lb, shared_ub = get_time_shared(shift, o_shift)
@@ -318,7 +320,7 @@ class Game:
                 states, scores = self.retrieve_score_and_state_during_interval(shared_lb, shared_ub, shift.period)
                 split_states = split_score_or_state_times(time_shared, states, shared_lb, shared_ub)
                 split_scores = split_score_or_state_times(time_shared, scores, shared_lb, shared_ub)
-        return split_states, split_scores
+        return split_states, split_scores, time_shared
 
     def determine_time_together(self, player, other_player):
         """
@@ -329,14 +331,20 @@ class Game:
         for period, shifts in player_shifts.items():
             for shift in shifts:
                 # Finds time shared
-                states, scores = self.calculate_time_shared(shift, other_player_shifts[period])
+                states, scores, time_shared = self.calculate_time_shared(shift, other_player_shifts[period])
                 if states and scores:
                     # Adds states & scores TOI to the player and the other player
                     # No need to re-calculate the TOI for the other  player and this player again
-                    player.add_toi_by_scores(self.game_id, states, other_player.name)
-                    other_player.add_toi_by_scores(self.game_id, states, player.name)
-                    player.add_toi_by_states(self.game_id, scores, other_player.name)
-                    other_player.add_toi_by_states(self.game_id, scores, player.name)
+                    player.add_toi(self.game_id, other_player.name, time_shared)
+                    player.add_toi_by_states(self.game_id, states, other_player.name)
+                    """
+                    Check each shift for each player to ensure it's adding up
+                        and adding up correctly
+                    """
+                    a = 5
+                    # other_player.add_toi_by_states(self.game_id, states, player.name)
+                    # player.add_toi_by_scores(self.game_id, scores, other_player.name)
+                    # other_player.add_toi_by_scores(self.game_id, scores, player.name)
                 else:
                     # Players didn't share time together, shouldn't do anything
                     continue

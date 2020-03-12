@@ -60,30 +60,42 @@ class Player:
             raise NotImplementedError
         return self.position
 
-    def sum_time_together(self, game_id):
+    # def sum_time_together(self, game_id):
+    #     """
+    #     Function to sum the values in ice_time_with_players
+    #     Separated by player, by game
+    #     """
+    #     for teammate in self.ice_time_with_players:
+    #         total = sum(self.ice_time_with_players[teammate])
+    #         if teammate not in self.ice_time_summed:
+    #             self.ice_time_summed[teammate] = {}
+    #         self.ice_time_summed[teammate][game_id] = total
+    #     return self
+    #
+    # def sum_all_shifts_per_game(self, game_id):
+    #     """
+    #     Function to sum the shifts in each game to determine total TOI
+    #     """
+    #     temp_period_total = []
+    #     for period in self.shifts_per_game.keys():
+    #         period_sum = 0
+    #         for shift in self.shifts_per_game[period]:
+    #             shared_time = pynhl.game.subtract_two_time_objects(shift.start, shift.end)
+    #             period_sum += shared_time
+    #         temp_period_total.append(period_sum)
+    #     self.ice_time_per_game[game_id] = sum(temp_period_total)
+    def add_toi(self, game_id, other_player, time_shared):
         """
-        Function to sum the values in ice_time_with_players
-        Separated by player, by game
-        """
-        for teammate in self.ice_time_with_players:
-            total = sum(self.ice_time_with_players[teammate])
-            if teammate not in self.ice_time_summed:
-                self.ice_time_summed[teammate] = {}
-            self.ice_time_summed[teammate][game_id] = total
-        return self
+        Adds time_shared, which is the time shared on a shift for self.player and other_player
 
-    def sum_all_shifts_per_game(self, game_id):
+        {Player}{Game_ID} = [ Each index is an int of seconds, each index is a shared value per shift ]
         """
-        Function to sum the shifts in each game to determine total TOI
-        """
-        temp_period_total = []
-        for period in self.shifts_per_game.keys():
-            period_sum = 0
-            for shift in self.shifts_per_game[period]:
-                shared_time = pynhl.game.subtract_two_time_objects(shift.start, shift.end)
-                period_sum += shared_time
-            temp_period_total.append(period_sum)
-        self.ice_time_per_game[game_id] = sum(temp_period_total)
+        if other_player not in self.ice_time_with_players:
+            self.ice_time_with_players[other_player] = {}
+        if game_id not in self.ice_time_with_players[other_player]:
+            self.ice_time_with_players[other_player][game_id] = []
+        self.ice_time_with_players[other_player][game_id].append(time_shared)
+        return self
 
     def add_toi_by_states(self, game_id, dict_states, other_player):
         """
