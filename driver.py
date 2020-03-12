@@ -1,6 +1,26 @@
-import requests, json, cProfile, memory_profiler
-from bs4 import BeautifulSoup
 from pynhl.game import Game
+import requests, json, cProfile, pstats, memory_profiler
+from bs4 import BeautifulSoup
+from io import StringIO, BytesIO
+
+
+def start_profiler():
+    """
+    Starts a profiler object to time the program
+    """
+    profiler = cProfile.Profile()
+    profiler.enable()
+    return profiler
+
+
+def print_profiler(profiler):
+    """
+    Prints the contents of the profiler at the given time
+    """
+    prof_stream = StringIO()
+    stats_from_profiler = pstats.Stats(profiler, stream=prof_stream).sort_stats("cumtime")
+    stats_from_profiler.print_stats(20)
+    return prof_stream.getvalue()
 
 
 def read_json_data(filename_to_read, is_game=True):
@@ -43,6 +63,7 @@ def get_json_data(url):
 
 
 if __name__ == "__main__":
+    profiler = start_profiler()
     NHL_GAME_NUM = 2019020645
     # NHL_API_URL = 'http://statsapi.web.nhl.com/api/v1/game/{}/feed/live'.format(NHL_GAME_NUM)
     # NHL_SHIFT_URL = 'https://api.nhle.com/stats/rest/en/shiftcharts?cayenneExp=gameId={}'.format(NHL_GAME_NUM)
@@ -53,4 +74,4 @@ if __name__ == "__main__":
     curr_game_shifts = read_json_data(NHL_GAME_NUM, is_game=False)
     curr_game = read_json_data(NHL_GAME_NUM)
     parsed_game = Game(curr_game, curr_game_shifts)
-    a = 5
+    print(print_profiler(profiler))

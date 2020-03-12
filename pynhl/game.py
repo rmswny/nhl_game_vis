@@ -229,10 +229,7 @@ class Game:
         player_shifts = {}
         other_player_shifts = {}
         for period in self.shifts_by_period:
-            try:
-                player_shifts[period] = self.shifts_by_period[period][player_name]
-            except KeyError as k:
-                a = 5
+            player_shifts[period] = self.shifts_by_period[period][player_name]
             try:
                 other_player_shifts[period] = self.shifts_by_period[period][other_name]
             except KeyError:
@@ -280,6 +277,7 @@ class Game:
                 temp_active[team].remove(player)
             for other_player in temp_active[team]:
                 self.determine_time_together(player, other_player)
+                a = 5
 
     def retrieve_score_and_state_during_interval(self, shift_lb, shift_ub, shift_period):
         """
@@ -333,16 +331,12 @@ class Game:
                 # Finds time shared
                 states, scores = self.calculate_time_shared(shift, other_player_shifts[period])
                 if states and scores:
-                    # Allows us to know TOI per state, toi per state/score/ and TOI per player
+                    # Adds states & scores TOI to the player and the other player
+                    # No need to re-calculate the TOI for the other  player and this player again
                     player.add_toi_by_scores(self.game_id, states, other_player.name)
+                    other_player.add_toi_by_scores(self.game_id, states, player.name)
+                    player.add_toi_by_states(self.game_id, scores, other_player.name)
+                    other_player.add_toi_by_states(self.game_id, scores, player.name)
                 else:
                     # Players didn't share time together, shouldn't do anything
                     continue
-        ############################################ Testing stuff here, can remove this later
-        try:
-            # minutes = player.ice_time_summed[other_player.name][self.game_id] // 60
-            # seconds = player.ice_time_summed[other_player.name][self.game_id] - (minutes * 60)
-            # _time = f"{minutes}:{seconds}"
-            return self
-        except KeyError:
-            pass

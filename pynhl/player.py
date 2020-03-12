@@ -88,7 +88,18 @@ class Player:
     def add_toi_by_states(self, game_id, dict_states, other_player):
         """
         Mimics toi_by_scores but does it for states as a key, rather than score
+        Make this take both?
         """
+        # TODO: Think of a way not to re-create the logic with _by_scores
+        if game_id not in self.ice_time_with_players_states:
+            self.ice_time_with_players_states[game_id] = {}
+        if other_player not in self.ice_time_with_players_states[game_id]:
+            self.ice_time_with_players_states[game_id][other_player] = {}  # Score:[TOI]
+        for state, _time in dict_states.items():
+            if state not in self.ice_time_with_players_states[game_id][other_player]:
+                self.ice_time_with_players_states[game_id][other_player][state] = []
+            self.ice_time_with_players_states[game_id][other_player][state].append(_time)
+        return self
 
     def add_toi_by_scores(self, game_id, dict_scores, other_player):
         """
@@ -105,9 +116,7 @@ class Player:
             if score not in self.ice_time_with_players_scores[game_id][other_player]:
                 self.ice_time_with_players_scores[game_id][other_player][score] = []
             self.ice_time_with_players_scores[game_id][other_player][score].append(_time)
-            # TODO: Can we somehow maintain the sum here?
-            a = 5
-        # Update sum?
+            # TODO: Can we somehow maintain the sum here? Let's create a separate function to do this and move on
         return self
 
     def retrieve_shifts_from_game(self, shifts_from_game):
