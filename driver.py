@@ -66,15 +66,18 @@ def get_json_data(url):
 if __name__ == "__main__":
     profiler = start_profiler()
     NHL_GAME_NUM = 2019020645
+
     # NHL_API_URL = 'http://statsapi.web.nhl.com/api/v1/game/{}/feed/live'.format(NHL_GAME_NUM)
     # NHL_SHIFT_URL = 'https://api.nhle.com/stats/rest/en/shiftcharts?cayenneExp=gameId={}'.format(NHL_GAME_NUM)
     # game_data_json = get_json_data(NHL_API_URL)
     # save_json_data(game_data_json,True,NHL_GAME_NUM)
     # shift_data_json = get_json_data(NHL_SHIFT_URL)
     # save_json_data(shift_data_json,False,NHL_GAME_NUM)
+
     curr_game_shifts = read_json_data(NHL_GAME_NUM, is_game=False)
     curr_game = read_json_data(NHL_GAME_NUM)
     players = []
+    
     '''
     Should a list of players be maintained here
     Where each player has a Shifts separated by GameIDs

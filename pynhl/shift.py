@@ -25,7 +25,7 @@ class Shift:
 
     def __eq__(self, other):
         if self.period == other.period:
-            return self.end < other.end
+            return self.start < other.start
         else:
             return self.period < other.period
 
@@ -33,7 +33,10 @@ class Shift:
         return hash(self.period) + hash(self.duration)
 
     def __str__(self):
-        return f"{self.player} , {self.period} , {self.start} : {self.end}"
+        return f"{self.player}:{self.period}:{self.start}:{self.end}"
+
+    def __repr__(self):
+        return self.__str__()
 
     def __lt__(self, other):
         if isinstance(other, Shift):

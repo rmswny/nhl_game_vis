@@ -85,16 +85,26 @@ class Event:
         # Null event_json after all necessary information is fetched, to save memory during runtime
         self.event_json = None
 
+    def __lt__(self, other):
+        if isinstance(other, Event):
+            return self.period < other.period and self.time < other.time
+
     def __eq__(self, other):
-        return self.type_of_event == other.type_of_event and self.period == other.type_of_event \
-               and self.time == other.time and self.x_loc == self.x_loc and self.y_loc == self.y_loc
+        if isinstance(other, Event):
+            return self.type_of_event == other.type_of_event and self.period == other.period and self.time == other.time
+        else:
+            raise NotImplementedError("What to do here, yo {}".format(other))
 
     def __hash__(self):
         return hash(self.type_of_event) + hash(self.period) + hash(self.time)
 
     def __str__(self):
         return ("Player : {}, Team: {}, Event: {}, Period: {}, Time: {}, X : {}, Y: {}".format
-                (self.players_direct_for, self.team_of_player, self.type_of_event, self.period, self.time,self.x_loc, self.y_loc))
+                (self.players_direct_for, self.team_of_player, self.type_of_event, self.period, self.time, self.x_loc,
+                 self.y_loc))
+
+    def __repr__(self):
+        return self.__str__()
 
     def transform_score(self):
         """

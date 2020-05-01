@@ -1,9 +1,9 @@
-from pynhl.event import Event, find_overlapping_shifts
+from pynhl.event import Event
 from pynhl.player import Player
 from pynhl.shift import Shift
 from datetime import datetime, date, timedelta
 from operator import attrgetter
-from copy import deepcopy
+import bisect
 
 TRACKED_EVENTS = {
     "Shot",
@@ -32,7 +32,8 @@ def subtract_two_time_objects(left, right):
     Select two datetime.time objects
     And normalize return to seconds
     """
-    result = timedelta(minutes=left.minute, seconds=left.second) - timedelta(minutes=right.minute, seconds=right.second)
+    result = timedelta(minutes=left.minute, seconds=left.second) - \
+             timedelta(minutes=right.minute, seconds=right.second)
     if result.days == -1:
         temp = (timedelta(days=1) - result)
         return (temp.seconds // 3600) * 60 + temp.seconds
@@ -48,7 +49,8 @@ def get_time_shared(curr_shift, other_shift):
 
     lower_bound = max(curr_shift.start, other_shift.start)
     upper_bound = min(curr_shift.end, other_shift.end)
-    temp = datetime.combine(date.today(), upper_bound) - datetime.combine(date.today(), lower_bound)
+    temp = datetime.combine(date.today(), upper_bound) - \
+           datetime.combine(date.today(), lower_bound)
     return temp.seconds, lower_bound, upper_bound
 
 
@@ -112,29 +114,26 @@ class Game:
         self.home_team = self.game_json['gameData']['teams']['home']['triCode']
         self.away_goalie = set()
         self.home_goalie = set()
-        self.final_score = ''
-        # Retrieve all shifts first, since we don't care about players
-        # Who didn't play a shift (active players only)
-        self.shifts_by_period = {}
-        self.retrieve_shifts_from_game()
-        #
-        self.players_in_game = {}
-        self.retrieve_players_in_game()
-        self.active_players = self.retrieve_active_players()
-        self.events_in_game = []
-        self.retrieve_events_in_game()
-        # Clear unnecessary data from the game API
+        # Home - Away normalized
+        self.final_score = f"{self.game_json['liveData']['plays']['allPlays'][-1]['about']['goals']['home']}-" \
+                           f"{self.game_json['liveData']['plays']['allPlays'][-1]['about']['goals']['away']}"
+        self.players = self.assign_shifts_to_players()
+        # Intervals tracks time ranges for state/score changes...faster lookup, rather than calculation
+        # [Period] : [ (time_start,time_end) ... ]
+        self.scores_intervals = {}
+        self.state_intervals = {}
+        self.events_in_game = self.retrieve_events_in_game()
+
+        # remove unnecessary data in memory before prolonged processing
         self.cleanup()
+
         # Extra functionality that doesn't require game/shift json
         self.parse_events_in_game()
         # Determine how much time each player played with every other player
         self.needs_a_new_name_for_shared_toi()
 
     def __str__(self):
-        # return f"Game ID: {self.game_id} , Season: {self.game_season} : {self.home_team} " \
-        #        f"vs. {self.away_team} Final Score: {self.final_score}"
-        return "Game ID: {} Season: {} {} vs. {} Final Score: {}".format(self.game_id, self.game_season, self.home_team,
-                                                                         self.away_team, self.final_score)
+        return f"Game ID: {self.game_id}, Season: {self.game_season}: {self.home_team} vs. {self.away_team} Final Score: {self.final_score}"
 
     def cleanup(self):
         self.game_json = None
@@ -144,12 +143,10 @@ class Game:
         """
         If a player is a goalie, adds it to home/away_goalie variable
         """
-        if isinstance(player_object, Player):
-            if 'G' in player_object.position:
-                if player_object.team == self.home_team:
-                    self.home_goalie.add(player_object.name)
-                else:
-                    self.away_goalie.add(player_object.name)
+        if player_object.team == self.home_team:
+            self.home_goalie.add(player_object.name)
+        else:
+            self.away_goalie.add(player_object.name)
         return self
 
     def retrieve_players_in_game(self):
@@ -157,57 +154,65 @@ class Game:
         Parse self.json_data for PLAYERS in the game
         Update self.players_in_game to be a list of [Player objects]
         """
+        players_dict = {}
         all_players = self.game_json["gameData"]["players"]
         for player_id in all_players:
-            # Add all players from game
             temp = Player(all_players[player_id])
-            if temp.team not in self.players_in_game:
-                self.players_in_game[temp.team] = []
-            if temp not in self.players_in_game[temp.team]:
-                self.players_in_game[temp.team].append(temp)
-            self.add_goalie(temp)
-        return self.players_in_game
-
-    def get_final_score(self, last_event):
-        """
-        Retrieve final score from json data
-        """
-        self.final_score = "{}-{}".format(last_event.score[1], last_event.score[0])
-        return self
+            players_dict[temp.name] = temp
+            if 'G' in temp.position:
+                self.add_goalie(temp)
+        return players_dict
 
     def retrieve_shifts_from_game(self):
         """
         Fetch shift information and generate a Shift object for each shift in the game
         """
+        shifts = []
+        sorted_ins = bisect.insort
         for shift in self.shift_json['data']:
             temp_shift = Shift(self.game_id, self.home_team, shift)
             if temp_shift.duration != 0:
-                if temp_shift.period not in self.shifts_by_period:
-                    self.shifts_by_period[temp_shift.period] = {}
-                if temp_shift.player not in self.shifts_by_period[temp_shift.period]:
-                    self.shifts_by_period[temp_shift.period][temp_shift.player] = []
-                self.shifts_by_period[temp_shift.period][temp_shift.player].append(temp_shift)
-            else:
-                continue
-        return self
+                # Maintains sorted order based off __eq__ inside shift object
+                sorted_ins(shifts, temp_shift)
+        return shifts
+
+    def assign_shifts_to_players(self):
+        """
+        Assigns shifts from each period in the game to the player object
+        Shifts are separated by [GameID][Period] = [Shifts in the period, in that game]
+        """
+        players = self.retrieve_players_in_game()
+        shifts = self.retrieve_shifts_from_game()
+        for shift in shifts:
+            if self.game_id not in players[shift.player].shifts:
+                players[shift.player].shifts[self.game_id] = []
+            players[shift.player].shifts[self.game_id].append(shift)
+        return players
 
     def retrieve_events_in_game(self):
         """
         Function to retrieve all events, and their necessary information to the class object
         """
+        # All events from the input JSON data
         events = self.game_json['liveData']['plays']['allPlays']
-        add_events = self.events_in_game.append
+        # Function to variable for speed
+        score_changes, state_changes = [], []
+        events_in_game = []
+        add_events = bisect.insort
+
+        # Adding events from the game
         for curr_event in events:
             type_of_event = curr_event['result']['event']
             if type_of_event in TRACKED_EVENTS:
                 temp_event = Event(curr_event)
-                add_events(temp_event)
-        try:
-            self.get_final_score(temp_event)
-        except UnboundLocalError:
-            raise SystemExit("No events in game???")
-        self.events_in_game = sorted(self.events_in_game, key=attrgetter("period", "time"))
-        return self
+                add_events(events_in_game, temp_event)
+                # Conditions to add score & state interval tracking
+                # TODO: Create helper function to CREATE the interval, not just the event added here
+                if "Penalty" in type_of_event:
+                    state_changes.append((temp_event.period, temp_event.time))
+                if "Goal" in type_of_event:
+                    score_changes.append((temp_event.period, temp_event.time))
+        return events_in_game
 
     def parse_events_in_game(self):
         """
@@ -243,9 +248,10 @@ class Game:
         This function is used ONLY when KNOWN unique values! .index returns first index, not all indices
         """
         if not isinstance(team, str) or not isinstance(player_name, str):
-            raise SystemExit("Improper usage of fetch_player_from_string, requires string inputs")
+            raise SystemExit(
+                "Improper usage of fetch_player_from_string, requires string inputs")
         try:
-            return self.players_in_game[team][self.players_in_game[team].index(player_name)]
+            return self.players[team][self.players[team].index(player_name)]
         except KeyError as incorrect_team_or_player:
             print(incorrect_team_or_player)
             raise SystemExit("Player and/or team not correct")
@@ -262,7 +268,8 @@ class Game:
                 if temp_team not in temp_active:
                     temp_active[temp_team] = set()
                 if curr_player not in temp_active[temp_team]:
-                    temp_active[temp_team].add(self.fetch_player_from_string(temp_team, curr_player))
+                    temp_active[temp_team].add(
+                        self.fetch_player_from_string(temp_team, curr_player))
         return temp_active
 
     def needs_a_new_name_for_shared_toi(self):
@@ -275,10 +282,10 @@ class Game:
             shifts = player.retrieve_all_shifts(self.shifts_by_period)
             other_players = self.active_players[player.team]
             other_players.remove(player)
-            for period,shifts_in_period in shifts.items():
+            for period, shifts_in_period in shifts.items():
                 for s in shifts_in_period:
                     # Generate second list here without the player included and ONLY his team
-                    self.find_players_on_during_a_shift(s,other_players)
+                    self.find_players_on_during_a_shift(s, other_players)
 
     def retrieve_score_and_state_during_interval(self, shift_lb, shift_ub, shift_period):
         """
@@ -303,7 +310,7 @@ class Game:
             elif event.period > shift_period:
                 break
         return states_during_interval, score_during_interval
-        
+
     def find_players_on_during_a_shift(self, players_shift, teammates):
         ''' FOCUS ON THIS ALGORITHM ~~~ OPTIMIZE LATER
         For each player, iterate through each player on HIS TEAM that was ACTIVE in the game:
@@ -313,15 +320,15 @@ class Game:
                         If not, move on
                         If they did, generate time shared, score state during time shared, and event state
         '''
-        #TODO: START HERE!
+        # TODO: START HERE!
         for teammate in teammates:
-            a=5
+            a = 5
             # Determine if teammate was on the ice during players_shift
             # If not move on to the next player
             # If so, count the time shared / get event times / get score intervals
-                # Add these values to the player / shift object (?)
-            
-        ### 
+            # Add these values to the player / shift object (?)
+
+        ###
         # for period, shifts in player_shifts.items():
         #     for shift in shifts:
         #         # Finds time shared

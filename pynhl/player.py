@@ -9,8 +9,9 @@ class Player:
         self.parse_position_type()
         self.jersey_num = player_json["primaryNumber"]
         self.team = player_json["currentTeam"]["triCode"]
+        self.shifts = {}  # [GameID] = [ Shifts in game ]
 
-        # Each shift can have events
+        # Counting metrics after fetching ALL game data
         self.shifts_per_game = {}  # GameID:[shifts]
         self.direct_events_for = []
         self.direct_events_against = []
@@ -106,7 +107,7 @@ class Player:
             # TODO: Can we somehow maintain the sum here? Let's create a separate function to do this and move on
         return self
 
-    def retrieve_all_shifts(self,all_shifts_in_game):
+    def retrieve_all_shifts(self, all_shifts_in_game):
         """Function to retrieve a dictionary of [Period:[Shifts]] based off the player"""
         shifts_from_player = {}
         for period in all_shifts_in_game:
