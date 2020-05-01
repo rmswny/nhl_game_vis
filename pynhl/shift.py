@@ -28,14 +28,12 @@ class Shift:
             return self.end < other.end
         else:
             return self.period < other.period
-        # return self.period == other.period and self.start == other.start and self.end == other.end
 
     def __hash__(self):
         return hash(self.period) + hash(self.duration)
 
     def __str__(self):
-        # return f"{self.name} , {self.period} , {self.start} : {self.end}"
-        return "{}, {}, {}:{}".format(self.player, self.period, self.start, self.end)
+        return f"{self.player} , {self.period} , {self.start} : {self.end}"
 
     def __lt__(self, other):
         if isinstance(other, Shift):
@@ -44,6 +42,7 @@ class Shift:
             else:
                 return self.period < other.period
         else:
+            # Comparing datetime's, not a shift
             return self.start < other
 
     def __gt__(self, other):

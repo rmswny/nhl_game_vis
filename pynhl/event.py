@@ -94,8 +94,7 @@ class Event:
 
     def __str__(self):
         return ("Player : {}, Team: {}, Event: {}, Period: {}, Time: {}, X : {}, Y: {}".format
-                (self.player_for, self.team_of_player, self.type_of_event, self.period, self.time,
-                 self.x_loc, self.y_loc))
+                (self.players_direct_for, self.team_of_player, self.type_of_event, self.period, self.time,self.x_loc, self.y_loc))
 
     def transform_score(self):
         """

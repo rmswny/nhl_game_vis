@@ -102,7 +102,6 @@ def seconds_to_minutes(seconds):
 
 class Game:
     # Game will have Players who will have shifts and each shift can have event(s)
-
     def __init__(self, game_json, shift_json):
         # Basic game information
         self.game_json = game_json
@@ -114,9 +113,11 @@ class Game:
         self.away_goalie = set()
         self.home_goalie = set()
         self.final_score = ''
-        # Players and shifts for each game
+        # Retrieve all shifts first, since we don't care about players
+        # Who didn't play a shift (active players only)
         self.shifts_by_period = {}
         self.retrieve_shifts_from_game()
+        #
         self.players_in_game = {}
         self.retrieve_players_in_game()
         self.active_players = self.retrieve_active_players()
@@ -128,7 +129,6 @@ class Game:
         self.parse_events_in_game()
         # Determine how much time each player played with every other player
         self.needs_a_new_name_for_shared_toi()
-        a = 5
 
     def __str__(self):
         # return f"Game ID: {self.game_id} , Season: {self.game_season} : {self.home_team} " \
@@ -197,7 +197,7 @@ class Game:
         """
         events = self.game_json['liveData']['plays']['allPlays']
         add_events = self.events_in_game.append
-        for index, curr_event in enumerate(events):
+        for curr_event in events:
             type_of_event = curr_event['result']['event']
             if type_of_event in TRACKED_EVENTS:
                 temp_event = Event(curr_event)
@@ -269,16 +269,16 @@ class Game:
         """
         driver function to iterate through players for shared TOI
         """
-        # Todo: Remove goalies?
-        temp_active = deepcopy(self.active_players)
         team = "BUF"  # testing variable
-        # for team in self.players_in_game:
         for player in self.active_players[team]:
-            if player in temp_active[team]:
-                temp_active[team].remove(player)
-            for other_player in temp_active[team]:
-                self.determine_time_together(player, other_player)
-                a = 5
+            # Get all shifts from player
+            shifts = player.retrieve_all_shifts(self.shifts_by_period)
+            other_players = self.active_players[player.team]
+            other_players.remove(player)
+            for period,shifts_in_period in shifts.items():
+                for s in shifts_in_period:
+                    # Generate second list here without the player included and ONLY his team
+                    self.find_players_on_during_a_shift(s,other_players)
 
     def retrieve_score_and_state_during_interval(self, shift_lb, shift_ub, shift_period):
         """
@@ -289,7 +289,7 @@ class Game:
         """
         states_during_interval = ['']  # state:time
         score_during_interval = ['']  # score:time
-        for i, event in enumerate(self.events_in_game):
+        for event in self.events_in_game:
             if event.period == shift_period:
                 if shift_lb <= event.time <= shift_ub:
                     states_during_interval.append((event.state, event.time))
@@ -303,48 +303,41 @@ class Game:
             elif event.period > shift_period:
                 break
         return states_during_interval, score_during_interval
-
-    def calculate_time_shared(self, shift, other_player_shifts):
-        """
-        Fetches total time shared and then separated by score & state
-        """
-        overlapping_shifts = find_overlapping_shifts(shift, other_player_shifts)  # set of indices
-        split_states, split_scores = {}, {}
-        time_shared = 0
-        for s in overlapping_shifts:
-            o_shift = other_player_shifts[s]
-            time_shared, shared_lb, shared_ub = get_time_shared(shift, o_shift)
-            if time_shared == 0:
-                continue
-            else:
-                states, scores = self.retrieve_score_and_state_during_interval(shared_lb, shared_ub, shift.period)
-                split_states = split_score_or_state_times(time_shared, states, shared_lb, shared_ub)
-                split_scores = split_score_or_state_times(time_shared, scores, shared_lb, shared_ub)
-        return split_states, split_scores, time_shared
-
-    def determine_time_together(self, player, other_player):
-        """
-        Given two player names, fetch all their shifts and determine how much time they shared
-        Parent function will iterate through all players and call this function
-        """
-        player_shifts, other_player_shifts = self.retrieve_shifts_for_two_players(player.name, other_player.name)
-        for period, shifts in player_shifts.items():
-            for shift in shifts:
-                # Finds time shared
-                states, scores, time_shared = self.calculate_time_shared(shift, other_player_shifts[period])
-                if states and scores:
-                    # Adds states & scores TOI to the player and the other player
-                    # No need to re-calculate the TOI for the other  player and this player again
-                    player.add_toi(self.game_id, other_player.name, time_shared)
-                    player.add_toi_by_states(self.game_id, states, other_player.name)
-                    """
-                    Check each shift for each player to ensure it's adding up
-                        and adding up correctly
-                    """
-                    a = 5
-                    # other_player.add_toi_by_states(self.game_id, states, player.name)
-                    # player.add_toi_by_scores(self.game_id, scores, other_player.name)
-                    # other_player.add_toi_by_scores(self.game_id, scores, player.name)
-                else:
-                    # Players didn't share time together, shouldn't do anything
-                    continue
+        
+    def find_players_on_during_a_shift(self, players_shift, teammates):
+        ''' FOCUS ON THIS ALGORITHM ~~~ OPTIMIZE LATER
+        For each player, iterate through each player on HIS TEAM that was ACTIVE in the game:
+            Iterate through each shift of the player
+                Iterate through each Player on their team
+                    See if they shared a shift together
+                        If not, move on
+                        If they did, generate time shared, score state during time shared, and event state
+        '''
+        #TODO: START HERE!
+        for teammate in teammates:
+            a=5
+            # Determine if teammate was on the ice during players_shift
+            # If not move on to the next player
+            # If so, count the time shared / get event times / get score intervals
+                # Add these values to the player / shift object (?)
+            
+        ### 
+        # for period, shifts in player_shifts.items():
+        #     for shift in shifts:
+        #         # Finds time shared
+        #         states, scores, time_shared = self.calculate_time_shared(shift, other_player_shifts[period])
+        #         if states and scores:
+        #             # Adds states & scores TOI to the player and the other player
+        #             # No need to re-calculate the TOI for the other  player and this player again
+        #             player.add_toi(self.game_id, other_player.name, time_shared)
+        #             player.add_toi_by_states(self.game_id, states, other_player.name)
+        #             """
+        #             Check each shift for each player to ensure it's adding up
+        #                 and adding up correctly
+        #             """
+        #             # other_player.add_toi_by_states(self.game_id, states, player.name)
+        #             # player.add_toi_by_scores(self.game_id, scores, other_player.name)
+        #             # other_player.add_toi_by_scores(self.game_id, scores, player.name)
+        #         else:
+        #             # Players didn't share time together, shouldn't do anything
+        #             continue

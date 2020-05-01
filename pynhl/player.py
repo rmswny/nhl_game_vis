@@ -22,7 +22,7 @@ class Player:
         self.ice_time_with_players_states = {}
         self.ice_time_with_players_scores = {}
 
-        # Calculations/Features
+        # Calculations/Features/Long term development stuff
         # self.average_time_per_shift = None
         # self.average_time_since_previous_shift = None
         # self.average_events_per_shift = None
@@ -41,8 +41,7 @@ class Player:
         return hash(self.name)
 
     def __str__(self):
-        # return f"{self.name} : {self.team} : {self.jersey_num}"
-        return "{},{},{},{}".format(self.name, self.position, self.team, self.jersey_num)
+        return f"{self.name} : {self.team} : {self.jersey_num}"
 
     def parse_position_type(self):
         """
@@ -60,30 +59,6 @@ class Player:
             raise NotImplementedError
         return self.position
 
-    # def sum_time_together(self, game_id):
-    #     """
-    #     Function to sum the values in ice_time_with_players
-    #     Separated by player, by game
-    #     """
-    #     for teammate in self.ice_time_with_players:
-    #         total = sum(self.ice_time_with_players[teammate])
-    #         if teammate not in self.ice_time_summed:
-    #             self.ice_time_summed[teammate] = {}
-    #         self.ice_time_summed[teammate][game_id] = total
-    #     return self
-    #
-    # def sum_all_shifts_per_game(self, game_id):
-    #     """
-    #     Function to sum the shifts in each game to determine total TOI
-    #     """
-    #     temp_period_total = []
-    #     for period in self.shifts_per_game.keys():
-    #         period_sum = 0
-    #         for shift in self.shifts_per_game[period]:
-    #             shared_time = pynhl.game.subtract_two_time_objects(shift.start, shift.end)
-    #             period_sum += shared_time
-    #         temp_period_total.append(period_sum)
-    #     self.ice_time_per_game[game_id] = sum(temp_period_total)
     def add_toi(self, game_id, other_player, time_shared):
         """
         Adds time_shared, which is the time shared on a shift for self.player and other_player
@@ -130,6 +105,15 @@ class Player:
             self.ice_time_with_players_scores[game_id][other_player][score].append(_time)
             # TODO: Can we somehow maintain the sum here? Let's create a separate function to do this and move on
         return self
+
+    def retrieve_all_shifts(self,all_shifts_in_game):
+        """Function to retrieve a dictionary of [Period:[Shifts]] based off the player"""
+        shifts_from_player = {}
+        for period in all_shifts_in_game:
+            if self.name in all_shifts_in_game[period]:
+                shifts_from_player[period] = []
+                shifts_from_player[period] = all_shifts_in_game[period][self.name]
+        return shifts_from_player
 
     def retrieve_shifts_from_game(self, shifts_from_game):
         """Function to grab all the shifts from a game object"""
