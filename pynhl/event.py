@@ -1,24 +1,22 @@
 import datetime, bisect
 
-EVENTS_THAT_CAN_CAUSE_A_STOPPAGE = {
-    "Shot",
-    "Goal",
-    "Penalty"
-}
+EVENTS_THAT_CAN_CAUSE_A_STOPPAGE = {"Shot", "Goal", "Penalty"}
 
 
-def time_check_event(check_time, start_time, end_time, event_=None):
+def time_check_event(event_time, shift_start_time, shift_end_time, event_=None):
     """
     Helper function to check whether an event was present during a shift
     """
 
     is_player_on = False
-    if start_time < check_time < end_time:
+    if shift_start_time < event_time < shift_end_time:
         is_player_on = True
-    elif start_time == check_time and event_ not in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
+    elif shift_start_time == event_time and event_ not in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
+        # TODO: If start is time of event, then player was 100% on -- ?
         # Start of shift is when event occurs
         is_player_on = True
-    elif end_time == check_time and event_ in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
+    elif shift_end_time == event_time and event_ in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
+        # TODO: End of shift, but got credit for shot/something
         is_player_on = True
     return is_player_on
 
@@ -87,6 +85,12 @@ class Event:
     def __lt__(self, other):
         if isinstance(other, Event):
             return self.period < other.period and self.time < other.time
+        elif other.start:
+            # For Shift & Event comparison, avoids circular import
+            if self.period == other.period:
+                return self.time < other.start
+            else:
+                return self.period < other.period
 
     def __eq__(self, other):
         if isinstance(other, Event):
@@ -211,9 +215,9 @@ class Event:
         Input is the shifts for a given player
         Based off this, see if there's a shift for the player during the event
         """
-        e_p = self.period
-        e_t = self.time
-        finder = bisect.bisect_left(shifts_for_player, self)  # Returns index in shifts_for_player
+        finder = bisect.bisect_right(shifts_for_player, self)  # Returns index in shifts_for_player
+        if finder != 0:
+            finder -= 1
         shift_start = shifts_for_player[finder]
         if time_check_event(self.time, shift_start.start, shift_start.end):
             self.assign_player_to_event(shift_start.player, shift_start.team)
