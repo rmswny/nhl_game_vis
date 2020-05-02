@@ -1,5 +1,4 @@
-import pynhl.game
-import datetime
+import datetime, bisect
 
 EVENTS_THAT_CAN_CAUSE_A_STOPPAGE = {
     "Shot",
@@ -81,7 +80,7 @@ class Event:
         self.x_loc = self.get_x()
         self.y_loc = self.get_y()
         self.score = self.get_score()  # ([0],[1]) where 0 is the PLAYERS TEAMS SCORE
-        self.state = 0
+        self.strength = 0
         # Null event_json after all necessary information is fetched, to save memory during runtime
         self.event_json = None
 
@@ -201,34 +200,35 @@ class Event:
         if true -> for == home_team, false -> against == home_team
         """
         if is_for_home_team:
-            self.state = f"{len(self.players_on_for)}v{len(self.players_on_against)}"
+            self.strength = f"{len(self.players_on_for)}v{len(self.players_on_against)}"
         else:
-            self.state = f"{len(self.players_on_against)}v{len(self.players_on_for)}"
+            self.strength = f"{len(self.players_on_against)}v{len(self.players_on_for)}"
         return self
 
-    def get_players_for_event(self, shifts_in_period, goalies):
+    def get_players_for_event(self, shifts_for_player):
         """
-        Determine which players are on the ice for the event
+        Determine which players are on the ice for the event (self)
+        Input is the shifts for a given player
+        Based off this, see if there's a shift for the player during the event
         """
-        for player in shifts_in_period:
-            # Find the latest shift where the start is less than the time of the event (ignore everything before/after)
-            for shift in shifts_in_period[player]:
-                if time_check_event(self.time, shift.start, shift.end):
-                    self.assign_player_to_event(shift.player, shift.team, goalies)
-                # If true, player was on for the event. False, ignore and move to the next player
+        e_p = self.period
+        e_t = self.time
+        finder = bisect.bisect_left(shifts_for_player, self)  # Returns index in shifts_for_player
+        shift_start = shifts_for_player[finder]
+        if time_check_event(self.time, shift_start.start, shift_start.end):
+            self.assign_player_to_event(shift_start.player, shift_start.team)
         return self
 
-    def assign_player_to_event(self, player_name, team_of_player, goalies):
+    def assign_player_to_event(self, player_name, team_of_player):
         """
         Helper function to assign player to the correct team
         Previous functions DETERMINE whether player SHOULD be added to event or not
         """
-        if player_name not in goalies:
-            if team_of_player == self.team_of_player:
-                self.players_on_for.add(player_name)
-            else:
-                self.players_on_against.add(player_name)
-            return self
+        if team_of_player == self.team_of_player:
+            self.players_on_for.add(player_name)
+        else:
+            self.players_on_against.add(player_name)
+        return self
 
     def are_goalies_on(self, goalies):
         """

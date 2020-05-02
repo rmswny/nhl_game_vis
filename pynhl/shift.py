@@ -1,3 +1,4 @@
+from pynhl.event import Event
 import datetime
 
 
@@ -42,6 +43,11 @@ class Shift:
         if isinstance(other, Shift):
             if self.period == other.period:
                 return self.start < other.start
+            else:
+                return self.period < other.period
+        elif isinstance(other, Event):
+            if self.period == other.period:
+                return self.start < other.time
             else:
                 return self.period < other.period
         else:

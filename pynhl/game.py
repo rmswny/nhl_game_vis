@@ -120,13 +120,9 @@ class Game:
         self.players = self.assign_shifts_to_players()
         # Intervals tracks time ranges for state/score changes...faster lookup, rather than calculation
         # [Period] : [ (time_start,time_end) ... ]
-        self.scores_intervals = {}
-        self.state_intervals = {}
         self.events_in_game = self.retrieve_events_in_game()
-
         # remove unnecessary data in memory before prolonged processing
         self.cleanup()
-
         # Extra functionality that doesn't require game/shift json
         self.parse_events_in_game()
         # Determine how much time each player played with every other player
@@ -149,7 +145,7 @@ class Game:
             self.away_goalie.add(player_object.name)
         return self
 
-    def retrieve_players_in_game(self):
+    def retrieve_players_in_game(self, active_players):
         """
         Parse self.json_data for PLAYERS in the game
         Update self.players_in_game to be a list of [Player objects]
@@ -158,9 +154,10 @@ class Game:
         all_players = self.game_json["gameData"]["players"]
         for player_id in all_players:
             temp = Player(all_players[player_id])
-            players_dict[temp.name] = temp
-            if 'G' in temp.position:
-                self.add_goalie(temp)
+            if temp.name in active_players:
+                players_dict[temp.name] = temp
+                if 'G' in temp.position:
+                    self.add_goalie(temp)
         return players_dict
 
     def retrieve_shifts_from_game(self):
@@ -181,8 +178,8 @@ class Game:
         Assigns shifts from each period in the game to the player object
         Shifts are separated by [GameID][Period] = [Shifts in the period, in that game]
         """
-        players = self.retrieve_players_in_game()
         shifts = self.retrieve_shifts_from_game()
+        players = self.retrieve_players_in_game(active_players=set([s.player for s in shifts]))
         for shift in shifts:
             if self.game_id not in players[shift.player].shifts:
                 players[shift.player].shifts[self.game_id] = []
@@ -195,35 +192,31 @@ class Game:
         """
         # All events from the input JSON data
         events = self.game_json['liveData']['plays']['allPlays']
-        # Function to variable for speed
-        score_changes, state_changes = [], []
         events_in_game = []
         add_events = bisect.insort
-
         # Adding events from the game
         for curr_event in events:
             type_of_event = curr_event['result']['event']
             if type_of_event in TRACKED_EVENTS:
                 temp_event = Event(curr_event)
                 add_events(events_in_game, temp_event)
-                # Conditions to add score & state interval tracking
-                # TODO: Create helper function to CREATE the interval, not just the event added here
-                if "Penalty" in type_of_event:
-                    state_changes.append((temp_event.period, temp_event.time))
-                if "Goal" in type_of_event:
-                    score_changes.append((temp_event.period, temp_event.time))
         return events_in_game
 
     def parse_events_in_game(self):
         """
         Function to find the players who are on ice for the event, and determine the state at time of the event
-        :return:
         """
         goalies = self.home_goalie.union(self.away_goalie)
         for i, event_to_parse in enumerate(self.events_in_game):
-            event_to_parse.get_players_for_event(self.shifts_by_period[event_to_parse.period], goalies)
+            # Find all players who were on for EACH event in the game
+            for player in self.players:
+                if player not in goalies:
+                    event_to_parse.get_players_for_event(self.players[player].shifts[self.game_id])
+
+            # Based off players on the ice, determine the strength (5v5, 6v5 etc)
             event_to_parse.determine_event_state(event_to_parse.team_of_player == self.home_team)
-            self.events_in_game[i] = event_to_parse
+            # Event should be edited in place, no need to re-assign?
+            # self.events_in_game[i] = event_to_parse
         return self
 
     def retrieve_shifts_for_two_players(self, player_name, other_name):
@@ -256,22 +249,6 @@ class Game:
             print(incorrect_team_or_player)
             raise SystemExit("Player and/or team not correct")
 
-    def retrieve_active_players(self):
-        """
-        Generates a set of player names for all players that had AT LEAST ONE shift in the game
-        """
-        temp_active = {}
-        for period in self.shifts_by_period:
-            for player in self.shifts_by_period[period]:
-                curr_player = self.shifts_by_period[period][player][0].player
-                temp_team = self.shifts_by_period[period][player][0].team
-                if temp_team not in temp_active:
-                    temp_active[temp_team] = set()
-                if curr_player not in temp_active[temp_team]:
-                    temp_active[temp_team].add(
-                        self.fetch_player_from_string(temp_team, curr_player))
-        return temp_active
-
     def needs_a_new_name_for_shared_toi(self):
         """
         driver function to iterate through players for shared TOI
@@ -299,11 +276,11 @@ class Game:
         for event in self.events_in_game:
             if event.period == shift_period:
                 if shift_lb <= event.time <= shift_ub:
-                    states_during_interval.append((event.state, event.time))
+                    states_during_interval.append((event.strength, event.time))
                     score_during_interval.append((event.score, event.time))
                 elif event.time < shift_lb:
                     # Get state of event JUST BEFORE the interval
-                    states_during_interval[0] = (event.state, event.time)
+                    states_during_interval[0] = (event.strength, event.time)
                     score_during_interval[0] = (event.score, event.time)
                     if len(score_during_interval) > 1 or len(states_during_interval) > 1:
                         raise SystemExit("This should never be true!")
