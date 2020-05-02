@@ -27,20 +27,6 @@ NOT_TRACKED_EVENTS = {
 }
 
 
-def subtract_two_time_objects(left, right):
-    """
-    Select two datetime.time objects
-    And normalize return to seconds
-    """
-    result = timedelta(minutes=left.minute, seconds=left.second) - \
-             timedelta(minutes=right.minute, seconds=right.second)
-    if result.days == -1:
-        temp = (timedelta(days=1) - result)
-        return (temp.seconds // 3600) * 60 + temp.seconds
-    else:
-        return (result.seconds // 3600) * 60 + result.seconds
-
-
 def get_time_shared(curr_shift, other_shift):
     """
     Finds the shared min and shared max, and subtracts the two time objects
@@ -49,43 +35,8 @@ def get_time_shared(curr_shift, other_shift):
 
     lower_bound = max(curr_shift.start, other_shift.start)
     upper_bound = min(curr_shift.end, other_shift.end)
-    temp = datetime.combine(date.today(), upper_bound) - \
-           datetime.combine(date.today(), lower_bound)
+    temp = datetime.combine(date.today(), upper_bound) - datetime.combine(date.today(), lower_bound)
     return temp.seconds, lower_bound, upper_bound
-
-
-def split_score_or_state_times(total_time, events_container, lb, ub):
-    """
-    Function to iterate through interval_dict (time:score OR state)
-    and find the time per state/score
-    ub/lb == datetime.time() objects of minutes:seconds
-
-    This function is used in conjunction with determining the score & state of each second the players
-    are on the ice together
-    """
-    # reference_time = events_container[0]
-    if len(events_container) == 1:
-        # No events, total_time == the amount of time at the previous score & state
-        temp = {v: total_time for v, t in events_container}
-    else:
-        temp = {v: 0 for v, t in events_container[1:]}
-        # At least one event during the shift interval, must do the work to determine times per each  interval
-        for score_or_state, event_time in events_container[1:]:
-            # Fetch the time spent at the current score/stat
-            old_value = temp[score_or_state]
-            # Determine how much time to add to the current score/state
-            interval_to_add = subtract_two_time_objects(event_time, lb)
-            # Add the new chunk of time to the current score/state
-            temp[score_or_state] = (old_value + interval_to_add)
-            # Reset the lower bound, since lb is used for the subtraction
-            lb = event_time
-        # Need to add the last value here, ub - i_time
-        interval_to_add = subtract_two_time_objects(ub, event_time)
-        # Use state from last event, can not change until next event
-        old_value = temp[score_or_state]
-        # Set the new value, should == total_time
-        temp[score_or_state] = (old_value + interval_to_add)
-    return temp
 
 
 def seconds_to_minutes(seconds):
@@ -117,14 +68,18 @@ class Game:
         # Home - Away normalized
         self.final_score = f"{self.game_json['liveData']['plays']['allPlays'][-1]['about']['goals']['home']}-" \
                            f"{self.game_json['liveData']['plays']['allPlays'][-1]['about']['goals']['away']}"
+
         self.players = self.assign_shifts_to_players()
-        # Intervals tracks time ranges for state/score changes...faster lookup, rather than calculation
-        # [Period] : [ (time_start,time_end) ... ]
         self.events_in_game = self.retrieve_events_in_game()
+        self.score_intervals = self.create_score_interval()
+
         # remove unnecessary data in memory before prolonged processing
         self.cleanup()
+
         # Extra functionality that doesn't require game/shift json
-        self.add_state_strength_players_to_event()
+        self.add_strength_players_to_event()
+        self.strength_intervals = self.create_strength_intervals()
+
         # Determine how much time each player played with every other player
         self.needs_a_new_name_for_shared_toi()
 
@@ -194,7 +149,6 @@ class Game:
         events = self.game_json['liveData']['plays']['allPlays']
         events_in_game = []
         add_events = bisect.insort
-        # Adding events from the game
         for curr_event in events:
             type_of_event = curr_event['result']['event']
             if type_of_event in TRACKED_EVENTS:
@@ -202,7 +156,33 @@ class Game:
                 add_events(events_in_game, temp_event)
         return events_in_game
 
-    def add_state_strength_players_to_event(self):
+    def create_score_interval(self):
+        """
+        Based off all the goals in the game, create a range of times during the score
+        """
+        temp = {}  # Time of goal (Per:Time) : Score
+        goals = (g for g in self.events_in_game if "Goal" in g.type_of_event)
+        for goal in goals:
+            if goal.period not in temp:
+                temp[goal.period] = {}
+            temp[goal.period][goal.time] = goal.score
+        return temp
+
+    def create_strength_intervals(self):
+        """
+        Based off all the strengths in the game, find times where it changes throughout the game
+        """
+        temp = {}  # Time of state change : New state change
+        last_strength = self.events_in_game[0].strength
+        for e in self.events_in_game:
+            if e.strength != last_strength:
+                if e.period not in temp:
+                    temp[e.period] = {}
+                temp[e.period][e.time] = e.strength
+                last_strength = e.strength
+        return temp
+
+    def add_strength_players_to_event(self):
         """
         Function to find the players who are on ice for the event
         Alters event.strength based off number of players on for the event
@@ -233,44 +213,21 @@ class Game:
                 # Find the teammates / opposition for each shift
                 for other_player in self.players:
                     if other_player != player:
-                        self.find_players_on_during_a_shift(shift, other_player)
+                        self.find_players_on_during_a_shift(shift, self.players[other_player].shifts[self.game_id])
 
-    def retrieve_score_and_state_during_interval(self, shift_lb, shift_ub, shift_period):
+    def find_players_on_during_a_shift(self, plyr_shift, other_player_shifts):
         """
-        Determines the score and state (5v5, 5v4, 3v3 etc) during a time interval (shift.start,shift.end)
-        Accounts for changes during the interval
-
-        shift_ is a time object of minutes:seconds
+        Determines if two players , during one shift, were on the ice together
+        If so, calculate their time shared and create subsets based on score & strength
         """
-        states_during_interval = ['']  # state:time
-        score_during_interval = ['']  # score:time
-        for event in self.events_in_game:
-            if event.period == shift_period:
-                if shift_lb <= event.time <= shift_ub:
-                    states_during_interval.append((event.strength, event.time))
-                    score_during_interval.append((event.score, event.time))
-                elif event.time < shift_lb:
-                    # Get state of event JUST BEFORE the interval
-                    states_during_interval[0] = (event.strength, event.time)
-                    score_during_interval[0] = (event.score, event.time)
-                    if len(score_during_interval) > 1 or len(states_during_interval) > 1:
-                        raise SystemExit("This should never be true!")
-            elif event.period > shift_period:
-                break
-        return states_during_interval, score_during_interval
-
-    def find_players_on_during_a_shift(self, players_shift, other_player):
-        ''' FOCUS ON THIS ALGORITHM ~~~ OPTIMIZE LATER
-        For each player, iterate through each player on HIS TEAM that was ACTIVE in the game:
-            Iterate through each shift of the player
-                Iterate through each Player on their team
-                    See if they shared a shift together
-                        If not, move on
-                        If they did, generate time shared, score state during time shared, and event state
-        '''
-        # TODO: START HERE!
-        a = 5
-        # Determine if teammate was on the ice during players_shift
-        # If not move on to the next player
-        # If so, count the time shared / get event times / get score intervals
-        # Add these values to the player / shift object (?)
+        index = bisect.bisect_right(other_player_shifts, plyr_shift)
+        if index != 0: index -= 1
+        closest_shift = other_player_shifts[index]
+        time_shared, start_shared, end_shared = get_time_shared(plyr_shift, closest_shift)
+        if time_shared > 0:
+            '''
+            By here, it's decided that they were on the ice together for at least one second
+            Now, for tracking purposes, find how the score & strength changed over the course of this interval
+            '''
+            pass
+            a = 5
