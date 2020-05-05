@@ -1,8 +1,8 @@
 from pynhl.event import Event
 from pynhl.player import Player
 from pynhl.shift import Shift
+import pynhl.helpers as helpers
 from datetime import datetime, date, timedelta
-from operator import attrgetter
 import bisect
 
 TRACKED_EVENTS = {
@@ -213,7 +213,10 @@ class Game:
                 # Find the teammates / opposition for each shift
                 for other_player in self.players:
                     if other_player != player:
+                        # Do the logic for determining and getting the time value in this function
                         self.find_players_on_during_a_shift(shift, self.players[other_player].shifts[self.game_id])
+        # TODO: Complete! Now test
+        a = 5
 
     def find_players_on_during_a_shift(self, plyr_shift, other_player_shifts):
         """
@@ -221,13 +224,50 @@ class Game:
         If so, calculate their time shared and create subsets based on score & strength
         """
         index = bisect.bisect_right(other_player_shifts, plyr_shift)
-        if index != 0: index -= 1
+        if index != 0:
+            index -= 1
         closest_shift = other_player_shifts[index]
-        time_shared, start_shared, end_shared = get_time_shared(plyr_shift, closest_shift)
-        if time_shared > 0:
-            '''
-            By here, it's decided that they were on the ice together for at least one second
-            Now, for tracking purposes, find how the score & strength changed over the course of this interval
-            '''
-            pass
-            a = 5
+        if helpers.do_shifts_overlap(plyr_shift, closest_shift):
+            time_shared, start_shared, end_shared = get_time_shared(plyr_shift, closest_shift)
+            # 0 value here could be useful for determining what players tend to follow other players via the coach
+            if time_shared > 0:
+                self.players[plyr_shift.player].add_shared_toi(self.game_id, closest_shift.player, time_shared)
+                return time_shared
+                # scores, strengths = self.determine_score_during_interval(plyr_shift, start_shared, end_shared, time_shared)
+                # return scores, strengths
+        else:
+            return -1
+
+    def determine_score_during_interval(self, shift, shared_start, shared_end, total_time_together):
+        """
+        Given a start & end time, find the scores during the interval
+        Returns a list of scores during the shift interval
+        """
+        # Subsetting the original list
+        subset_start = bisect.bisect_left(self.events_in_game, shift.period)
+        subset_end = bisect.bisect_left(self.events_in_game, shift.period + 1)
+        start_index = bisect.bisect_right(self.events_in_game, shared_start, lo=subset_start, hi=subset_end)
+        end_index = bisect.bisect_right(self.events_in_game, shared_end, lo=subset_start, hi=subset_end)
+
+        # Gettin the time & values here
+        scores, strengths = {}, {}
+        if self.events_in_game[start_index:end_index]:
+            moving_lb = shared_start
+            # If there is at least one evnet during the shift interval
+            for e in self.events_in_game[start_index:end_index]:
+                if e.time > shared_end:
+                    break
+                # Grab the difference and the strength/score from the difference
+                time_diff = helpers.subtract_two_time_objects(moving_lb, e.time)
+                if e.score not in scores:
+                    scores[e.score] = 0
+                if e.strength not in strengths:
+                    strengths[e.strength] = 0
+                scores[e.score] += time_diff
+                strengths[e.strength] += time_diff
+
+        else:
+            # There are no events, grab the start_index -1 strength & scor enad the entire time shared
+            scores[self.events_in_game[start_index].score] = total_time_together
+            strengths[self.events_in_game[start_index].strength] = total_time_together
+        return scores, strengths

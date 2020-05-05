@@ -1,62 +1,4 @@
-import datetime, bisect
-
-EVENTS_THAT_CAN_CAUSE_A_STOPPAGE = {"Shot", "Goal", "Penalty"}
-
-
-def time_check_event(event_time, shift_start_time, shift_end_time, event_=None):
-    """
-    Helper function to check whether an event was present during a shift
-    """
-
-    is_player_on = False
-    if shift_start_time < event_time < shift_end_time:
-        is_player_on = True
-    elif shift_start_time == event_time and event_ not in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
-        # TODO: If start is time of event, then player was 100% on -- ?
-        # Start of shift is when event occurs
-        is_player_on = True
-    elif shift_end_time == event_time and event_ in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
-        # TODO: End of shift, but got credit for shot/something
-        is_player_on = True
-    return is_player_on
-
-
-def time_check_shift(p_shift, o_shift):
-    """
-    Helper function to determine whether or not two players were on the ice at a given time
-    IF SO, then another function is called to find the time shared together
-    """
-    on_together = False
-    if o_shift.start <= p_shift.start <= o_shift.end:
-        on_together = True
-    elif o_shift.start <= p_shift.end <= o_shift.end:
-        on_together = True
-    elif p_shift.start <= o_shift.start <= p_shift.end:
-        on_together = True
-    elif p_shift.start <= o_shift.end <= p_shift.end:
-        on_together = True
-
-    return on_together
-
-
-def find_overlapping_shifts(player_shift, other_shifts):
-    """
-    Function will determine if ANY shift occurs doing another shift
-    And will find the total time, over (possibly) more than one shift that is shared
-    between two players
-
-    Helper function that iterates through a list of shifts (other_shifts) to compare to player_shift
-    Inputs are already separated by period & team to ensure minimal comparisons are needed
-
-    returns the indices where shifts are overlapping
-    """
-    indices = set()
-    for index, other_shift in enumerate(other_shifts):
-        # How to handle both shifts and time objects? Probably cannot -- separate functions!
-        if time_check_shift(player_shift, other_shift):
-            # on the ice together!
-            indices.add(index)
-    return indices
+import datetime, bisect, pynhl.helpers as helpers
 
 
 class Event:
@@ -85,12 +27,20 @@ class Event:
     def __lt__(self, other):
         if isinstance(other, Event):
             return self.period < other.period and self.time < other.time
+        elif isinstance(other, datetime.time):
+            return self.time < other
+        elif isinstance(other, int):
+            # Checking for periods
+            return self.period < other
         elif other.start:
             # For Shift & Event comparison, avoids circular import
             if self.period == other.period:
                 return self.time < other.start
             else:
                 return self.period < other.period
+
+    def __gt__(self, other):
+        return not self.__lt__(other)
 
     def __eq__(self, other):
         if isinstance(other, Event):
@@ -178,8 +128,9 @@ class Event:
         """
         Adds the score at the time of the event
         """
-        self.score = self.event_json['about']['goals']['home'], self.event_json['about']['goals']['away']
-        return self.score
+        score_at_time_of_event = self.event_json['about']['goals']['home'], self.event_json['about']['goals']['away']
+        # score is relative to home team
+        return score_at_time_of_event[0] - score_at_time_of_event[1]
 
     def get_x(self):
         """
@@ -209,6 +160,14 @@ class Event:
             self.strength = f"{len(self.players_on_against)}v{len(self.players_on_for)}"
         return self
 
+    def are_goalies_on(self, goalies):
+        """
+        Intersect the players on with the goalies in the game to determine which goalies are on the ice for the event
+        Used for establishing 5v5, 6v5 etc
+        """
+        players = set(self.players_on_for + self.players_on_against)
+        return goalies.intersection(players)
+
     def get_players_for_event(self, shifts_for_player):
         """
         Determine which players are on the ice for the event (self)
@@ -219,7 +178,7 @@ class Event:
         if finder != 0:
             finder -= 1
         shift_start = shifts_for_player[finder]
-        if time_check_event(self.time, shift_start.start, shift_start.end):
+        if helpers.time_check_event(self.time, shift_start.start, shift_start.end):
             self.assign_player_to_event(shift_start.player, shift_start.team)
         return self
 
@@ -233,11 +192,3 @@ class Event:
         else:
             self.players_on_against.add(player_name)
         return self
-
-    def are_goalies_on(self, goalies):
-        """
-        Intersect the players on with the goalies in the game to determine which goalies are on the ice for the event
-        Used for establishing 5v5, 6v5 etc
-        """
-        players = set(self.players_on_for + self.players_on_against)
-        return goalies.intersection(players)

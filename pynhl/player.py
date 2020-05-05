@@ -1,6 +1,3 @@
-import pynhl.game
-
-
 class Player:
     # Player will have shifts where each shift can have event(s)
     def __init__(self, player_json):
@@ -20,8 +17,6 @@ class Player:
 
         # {GameID}{Player Name} = [toi_by_shift]
         self.ice_time_with_players = {}
-        self.ice_time_with_players_states = {}
-        self.ice_time_with_players_scores = {}
 
         # Calculations/Features/Long term development stuff
         # self.average_time_per_shift = None
@@ -60,7 +55,7 @@ class Player:
             raise NotImplementedError
         return self.position
 
-    def add_toi(self, game_id, other_player, time_shared):
+    def add_shared_toi(self, game_id, other_player, time_shared):
         """
         Adds time_shared, which is the time shared on a shift for self.player and other_player
 
@@ -72,49 +67,6 @@ class Player:
             self.ice_time_with_players[other_player][game_id] = []
         self.ice_time_with_players[other_player][game_id].append(time_shared)
         return self
-
-    def add_toi_by_states(self, game_id, dict_states, other_player):
-        """
-        Mimics toi_by_scores but does it for states as a key, rather than score
-        Make this take both?
-        """
-        # TODO: Think of a way not to re-create the logic with _by_scores
-        if game_id not in self.ice_time_with_players_states:
-            self.ice_time_with_players_states[game_id] = {}
-        if other_player not in self.ice_time_with_players_states[game_id]:
-            self.ice_time_with_players_states[game_id][other_player] = {}  # Score:[TOI]
-        for state, _time in dict_states.items():
-            if state not in self.ice_time_with_players_states[game_id][other_player]:
-                self.ice_time_with_players_states[game_id][other_player][state] = []
-            self.ice_time_with_players_states[game_id][other_player][state].append(_time)
-        return self
-
-    def add_toi_by_scores(self, game_id, dict_scores, other_player):
-        """
-        Adds the Game-State-Score-Time separated values from a game to the player object
-
-        Requirements - GameID, dicts of states & scores, and the other player
-        """
-        # player.ice_time_with_players = {Game_ID}{Score}{Other_Player_Name}
-        if game_id not in self.ice_time_with_players_scores:
-            self.ice_time_with_players_scores[game_id] = {}
-        if other_player not in self.ice_time_with_players_scores[game_id]:
-            self.ice_time_with_players_scores[game_id][other_player] = {}  # Score:[TOI]
-        for score, _time in dict_scores.items():
-            if score not in self.ice_time_with_players_scores[game_id][other_player]:
-                self.ice_time_with_players_scores[game_id][other_player][score] = []
-            self.ice_time_with_players_scores[game_id][other_player][score].append(_time)
-            # TODO: Can we somehow maintain the sum here? Let's create a separate function to do this and move on
-        return self
-
-    def retrieve_all_shifts(self, all_shifts_in_game):
-        """Function to retrieve a dictionary of [Period:[Shifts]] based off the player"""
-        shifts_from_player = {}
-        for period in all_shifts_in_game:
-            if self.name in all_shifts_in_game[period]:
-                shifts_from_player[period] = []
-                shifts_from_player[period] = all_shifts_in_game[period][self.name]
-        return shifts_from_player
 
     def retrieve_shifts_from_game(self, shifts_from_game):
         """Function to grab all the shifts from a game object"""
