@@ -21,28 +21,23 @@ def seconds_to_minutes(seconds):
     if isinstance(seconds, int):
         minutes = seconds // 60
         seconds = seconds - (minutes * 60)
-        time_string = f"{minutes}:{seconds}"
-        return datetime.strptime(time_string, "%M:%S").time()
+        return f"{minutes}:{seconds}"
     else:
         raise SystemExit("Incorrect type for function, must be int")
 
 
-def do_shifts_overlap(p_shift, o_shift):
+def do_shifts_overlap(baseline, other):
     """
-    Helper function to determine whether or not two players were on the ice at a given time
-    IF SO, then another function is called to find the time shared together
+    Determine if two Shift objets were present at the same time
     """
-    on_together = False
-    if o_shift.start <= p_shift.start <= o_shift.end:
-        on_together = True
-    elif o_shift.start <= p_shift.end <= o_shift.end:
-        on_together = True
-    elif p_shift.start <= o_shift.start <= p_shift.end:
-        on_together = True
-    elif p_shift.start <= o_shift.end <= p_shift.end:
-        on_together = True
-
-    return on_together
+    # Think about the two scenarios, baseline is on after other 1
+    # And other is on after baseline 2
+    if baseline.period == other.period:
+        if baseline.start >= other.start and baseline.start <= other.end:
+            return True
+        elif other.start >= baseline.start and other.start <= baseline.end:
+            return True
+    return False
 
 
 def time_check_event(event_time, shift_start_time, shift_end_time, event_=None):

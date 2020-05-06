@@ -207,22 +207,29 @@ class Game:
         For each player in the game, find their teammates & opposition for
         every second they are on the ice in that game
         """
-        for player in self.players:
+        for p_i, player in enumerate(self.players):
+            player = "Rasmus Ristolainen"
             player_shifts = self.players[player].shifts[self.game_id]
             for shift in player_shifts:
                 # Find the teammates / opposition for each shift
-                for other_player in self.players:
-                    if other_player != player:
-                        # Do the logic for determining and getting the time value in this function
+                for other_player in {k: v for k, v in self.players.items() if k != player}:
+                    # For each of player's shift, see if other play was on the ice during it
+                    if self.players[other_player].team == self.players[player].team:
                         self.find_players_on_during_a_shift(shift, self.players[other_player].shifts[self.game_id])
-        # TODO: Complete! Now test
-        a = 5
+            # Quick testing dict comprehension
+            '''
+            Using ristolainen, almost all of them are jacked up
+            '''
+            t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
+                 in self.players[player].ice_time_with_players}
+            a = 5
 
     def find_players_on_during_a_shift(self, plyr_shift, other_player_shifts):
         """
         Determines if two players , during one shift, were on the ice together
         If so, calculate their time shared and create subsets based on score & strength
         """
+        # Correct period for the shift?
         index = bisect.bisect_right(other_player_shifts, plyr_shift)
         if index != 0:
             index -= 1
@@ -238,36 +245,36 @@ class Game:
         else:
             return -1
 
-    def determine_score_during_interval(self, shift, shared_start, shared_end, total_time_together):
-        """
-        Given a start & end time, find the scores during the interval
-        Returns a list of scores during the shift interval
-        """
-        # Subsetting the original list
-        subset_start = bisect.bisect_left(self.events_in_game, shift.period)
-        subset_end = bisect.bisect_left(self.events_in_game, shift.period + 1)
-        start_index = bisect.bisect_right(self.events_in_game, shared_start, lo=subset_start, hi=subset_end)
-        end_index = bisect.bisect_right(self.events_in_game, shared_end, lo=subset_start, hi=subset_end)
-
-        # Gettin the time & values here
-        scores, strengths = {}, {}
-        if self.events_in_game[start_index:end_index]:
-            moving_lb = shared_start
-            # If there is at least one evnet during the shift interval
-            for e in self.events_in_game[start_index:end_index]:
-                if e.time > shared_end:
-                    break
-                # Grab the difference and the strength/score from the difference
-                time_diff = helpers.subtract_two_time_objects(moving_lb, e.time)
-                if e.score not in scores:
-                    scores[e.score] = 0
-                if e.strength not in strengths:
-                    strengths[e.strength] = 0
-                scores[e.score] += time_diff
-                strengths[e.strength] += time_diff
-
-        else:
-            # There are no events, grab the start_index -1 strength & scor enad the entire time shared
-            scores[self.events_in_game[start_index].score] = total_time_together
-            strengths[self.events_in_game[start_index].strength] = total_time_together
-        return scores, strengths
+    # def determine_score_during_interval(self, shift, shared_start, shared_end, total_time_together):
+    #     """
+    #     Given a start & end time, find the scores during the interval
+    #     Returns a list of scores during the shift interval
+    #     """
+    #     # Subsetting the original list
+    #     subset_start = bisect.bisect_left(self.events_in_game, shift.period)
+    #     subset_end = bisect.bisect_left(self.events_in_game, shift.period + 1)
+    #     start_index = bisect.bisect_right(self.events_in_game, shared_start, lo=subset_start, hi=subset_end)
+    #     end_index = bisect.bisect_right(self.events_in_game, shared_end, lo=subset_start, hi=subset_end)
+    #
+    #     # Gettin the time & values here
+    #     scores, strengths = {}, {}
+    #     if self.events_in_game[start_index:end_index]:
+    #         moving_lb = shared_start
+    #         # If there is at least one evnet during the shift interval
+    #         for e in self.events_in_game[start_index:end_index]:
+    #             if e.time > shared_end:
+    #                 break
+    #             # Grab the difference and the strength/score from the difference
+    #             time_diff = helpers.subtract_two_time_objects(moving_lb, e.time)
+    #             if e.score not in scores:
+    #                 scores[e.score] = 0
+    #             if e.strength not in strengths:
+    #                 strengths[e.strength] = 0
+    #             scores[e.score] += time_diff
+    #             strengths[e.strength] += time_diff
+    #
+    #     else:
+    #         # There are no events, grab the start_index -1 strength & scor enad the entire time shared
+    #         scores[self.events_in_game[start_index].score] = total_time_together
+    #         strengths[self.events_in_game[start_index].strength] = total_time_together
+    #     return scores, strengths
