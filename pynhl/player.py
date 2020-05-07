@@ -1,3 +1,6 @@
+import numpy
+
+
 class Player:
     # Player will have shifts where each shift can have event(s)
     def __init__(self, player_json):

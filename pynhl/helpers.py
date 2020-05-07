@@ -42,6 +42,8 @@ def seconds_to_minutes(seconds):
     if isinstance(seconds, int):
         minutes = seconds // 60
         seconds = seconds - (minutes * 60)
+        if seconds < 10:
+            seconds = f"0{seconds}"
         return f"{minutes}:{seconds}"
     else:
         raise SystemExit("Incorrect type for function, must be int")
@@ -54,9 +56,9 @@ def do_shifts_overlap(baseline, other):
     # Think about the two scenarios, baseline is on after other 1
     # And other is on after baseline 2
     if baseline.period == other.period:
-        if baseline.start >= other.start and baseline.start <= other.end:
+        if other.start <= baseline.start <= other.end:
             return True
-        elif other.start >= baseline.start and other.start <= baseline.end:
+        elif baseline.start <= other.start <= baseline.end:
             return True
     return False
 

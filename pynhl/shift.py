@@ -42,7 +42,7 @@ class Shift:
     def __lt__(self, other):
         if isinstance(other, Shift):
             if self.period == other.period:
-                return self.start <= other.start
+                return self.end <= other.start
             else:
                 return self.period < other.period
         elif isinstance(other, Event):

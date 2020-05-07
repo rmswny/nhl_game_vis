@@ -2,8 +2,7 @@ from pynhl.event import Event
 from pynhl.player import Player
 from pynhl.shift import Shift
 import pynhl.helpers as helpers
-import bisect
-import numpy
+import bisect, numpy, pandas
 
 
 class Game:
@@ -37,7 +36,19 @@ class Game:
         for p_i, player in enumerate(self.players):
             for other_player in {k: v for k, v in self.players.items() if k != player}:
                 if self.players[other_player].team == self.players[player].team:
+                    # Check to see if the player has been added from this or a previous game
+                    if player in self.players[other_player].ice_time_with_players:
+                        # Check to see if this game has been done already
+                        if self.game_id in self.players[other_player].ice_time_with_players[player]:
+                            # Skip this player, they have already been calculated
+                            continue
+                    # Calculate the time between the two players in this function
                     self.get_time_together_between_two_players(self.players[player], self.players[other_player])
+        # Testing function
+        for player in self.players:
+            t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
+                 in self.players[player].ice_time_with_players}
+            a = 5
 
     def __str__(self):
         return f"Game ID: {self.game_id}, Season: {self.game_season}: {self.home_team} vs. {self.away_team} Final Score: {self.final_score}"
@@ -167,14 +178,16 @@ class Game:
         every second they are on the ice in that game
         """
         for p_shift in player.shifts[self.game_id]:
-            i = bisect.bisect_right(other.shifts[self.game_id], p_shift)
-            if i:
+            i = bisect.bisect_left(other.shifts[self.game_id], p_shift)
+            if i == len(other.shifts[self.game_id]):
                 i -= 1
             closest_shift = other.shifts[self.game_id][i]
             if helpers.do_shifts_overlap(p_shift, closest_shift):
                 time_shared, lb, ub = helpers.get_time_shared(p_shift, closest_shift)
                 if time_shared > 0:
+                    # No need to check it twice
                     player.add_shared_toi(self.game_id, other.name, time_shared)
+                    other.add_shared_toi(self.game_id, player.name, time_shared)
         # Quick testing dict comprehension
         t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
              in self.players[player].ice_time_with_players}
