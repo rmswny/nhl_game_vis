@@ -2,55 +2,8 @@ from pynhl.event import Event
 from pynhl.player import Player
 from pynhl.shift import Shift
 import pynhl.helpers as helpers
-from datetime import datetime, date, timedelta
 import bisect
-
-TRACKED_EVENTS = {
-    "Shot",
-    "Faceoff",
-    "Giveaway",
-    "Takeaway",
-    "Penalty",
-    "Missed Shot",
-    "Blocked Shot",
-    "Goal",
-    "Hit"
-}
-NOT_TRACKED_EVENTS = {
-    "Period Start",
-    "Game Official",
-    "Game End",
-    "Period End",
-    "Game Scheduled",
-    "Period Ready",
-    "Period Official"
-}
-
-
-def get_time_shared(curr_shift, other_shift):
-    """
-    Finds the shared min and shared max, and subtracts the two time objects
-    Returns the value in seconds (timedelta doesn't track minutes/hours)
-    """
-
-    lower_bound = max(curr_shift.start, other_shift.start)
-    upper_bound = min(curr_shift.end, other_shift.end)
-    temp = datetime.combine(date.today(), upper_bound) - datetime.combine(date.today(), lower_bound)
-    return temp.seconds, lower_bound, upper_bound
-
-
-def seconds_to_minutes(seconds):
-    """
-    Takes an int input (seconds) and converts to time() object of minutes/seconds
-    NHL does not deal with hours so ignoring this functionality
-    """
-    if isinstance(seconds, int):
-        minutes = seconds // 60
-        seconds = seconds - (minutes * 60)
-        time_string = f"{minutes}:{seconds}"
-        return datetime.strptime(time_string, "%M:%S").time()
-    else:
-        raise SystemExit("Incorrect type for function, must be int")
+import numpy
 
 
 class Game:
@@ -81,10 +34,16 @@ class Game:
         self.strength_intervals = self.create_strength_intervals()
 
         # Determine how much time each player played with every other player
-        self.needs_a_new_name_for_shared_toi()
+        for p_i, player in enumerate(self.players):
+            for other_player in {k: v for k, v in self.players.items() if k != player}:
+                if self.players[other_player].team == self.players[player].team:
+                    self.get_time_together_between_two_players(self.players[player], self.players[other_player])
 
     def __str__(self):
         return f"Game ID: {self.game_id}, Season: {self.game_season}: {self.home_team} vs. {self.away_team} Final Score: {self.final_score}"
+
+    def __repr__(self):
+        return self.__str__()
 
     def cleanup(self):
         self.game_json = None
@@ -151,7 +110,7 @@ class Game:
         add_events = bisect.insort
         for curr_event in events:
             type_of_event = curr_event['result']['event']
-            if type_of_event in TRACKED_EVENTS:
+            if type_of_event in helpers.TRACKED_EVENTS:
                 temp_event = Event(curr_event)
                 add_events(events_in_game, temp_event)
         return events_in_game
@@ -202,48 +161,24 @@ class Game:
             event_to_parse.determine_event_state(event_to_parse.team_of_player == self.home_team)
         return self
 
-    def needs_a_new_name_for_shared_toi(self):
+    def get_time_together_between_two_players(self, player, other):
         """
         For each player in the game, find their teammates & opposition for
         every second they are on the ice in that game
         """
-        for p_i, player in enumerate(self.players):
-            player = "Rasmus Ristolainen"
-            player_shifts = self.players[player].shifts[self.game_id]
-            for shift in player_shifts:
-                # Find the teammates / opposition for each shift
-                for other_player in {k: v for k, v in self.players.items() if k != player}:
-                    # For each of player's shift, see if other play was on the ice during it
-                    if self.players[other_player].team == self.players[player].team:
-                        self.find_players_on_during_a_shift(shift, self.players[other_player].shifts[self.game_id])
-            # Quick testing dict comprehension
-            '''
-            Using ristolainen, almost all of them are jacked up
-            '''
-            t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
-                 in self.players[player].ice_time_with_players}
-            a = 5
-
-    def find_players_on_during_a_shift(self, plyr_shift, other_player_shifts):
-        """
-        Determines if two players , during one shift, were on the ice together
-        If so, calculate their time shared and create subsets based on score & strength
-        """
-        # Correct period for the shift?
-        index = bisect.bisect_right(other_player_shifts, plyr_shift)
-        if index != 0:
-            index -= 1
-        closest_shift = other_player_shifts[index]
-        if helpers.do_shifts_overlap(plyr_shift, closest_shift):
-            time_shared, start_shared, end_shared = get_time_shared(plyr_shift, closest_shift)
-            # 0 value here could be useful for determining what players tend to follow other players via the coach
-            if time_shared > 0:
-                self.players[plyr_shift.player].add_shared_toi(self.game_id, closest_shift.player, time_shared)
-                return time_shared
-                # scores, strengths = self.determine_score_during_interval(plyr_shift, start_shared, end_shared, time_shared)
-                # return scores, strengths
-        else:
-            return -1
+        for p_shift in player.shifts[self.game_id]:
+            i = bisect.bisect_right(other.shifts[self.game_id], p_shift)
+            if i:
+                i -= 1
+            closest_shift = other.shifts[self.game_id][i]
+            if helpers.do_shifts_overlap(p_shift, closest_shift):
+                time_shared, lb, ub = helpers.get_time_shared(p_shift, closest_shift)
+                if time_shared > 0:
+                    player.add_shared_toi(self.game_id, other.name, time_shared)
+        # Quick testing dict comprehension
+        t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
+             in self.players[player].ice_time_with_players}
+        a = 5
 
     # def determine_score_during_interval(self, shift, shared_start, shared_end, total_time_together):
     #     """

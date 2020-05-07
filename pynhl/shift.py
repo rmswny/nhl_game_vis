@@ -42,17 +42,17 @@ class Shift:
     def __lt__(self, other):
         if isinstance(other, Shift):
             if self.period == other.period:
-                return self.start < other.start
+                return self.start <= other.start
             else:
                 return self.period < other.period
         elif isinstance(other, Event):
             if self.period == other.period:
-                return self.start < other.time
+                return self.start <= other.time
             else:
                 return self.period < other.period
         else:
             # Comparing datetime's, not a shift
-            return self.start < other
+            return self.start <= other
 
     def __gt__(self, other):
         return not (self < other)

@@ -2,6 +2,27 @@ import datetime
 
 EVENTS_THAT_CAN_CAUSE_A_STOPPAGE = {"Shot", "Goal", "Penalty"}
 
+TRACKED_EVENTS = {
+    "Shot",
+    "Faceoff",
+    "Giveaway",
+    "Takeaway",
+    "Penalty",
+    "Missed Shot",
+    "Blocked Shot",
+    "Goal",
+    "Hit"
+}
+NOT_TRACKED_EVENTS = {
+    "Period Start",
+    "Game Official",
+    "Game End",
+    "Period End",
+    "Game Scheduled",
+    "Period Ready",
+    "Period Official"
+}
+
 
 def subtract_two_time_objects(lhs, rhs):
     """
@@ -57,21 +78,15 @@ def time_check_event(event_time, shift_start_time, shift_end_time, event_=None):
         is_player_on = True
     return is_player_on
 
-# def find_overlapping_shifts(player_shift, other_shifts):
-#     """
-#     Function will determine if ANY shift occurs doing another shift
-#     And will find the total time, over (possibly) more than one shift that is shared
-#     between two players
-#
-#     Helper function that iterates through a list of shifts (other_shifts) to compare to player_shift
-#     Inputs are already separated by period & team to ensure minimal comparisons are needed
-#
-#     returns the indices where shifts are overlapping
-#     """
-#     indices = set()
-#     for index, other_shift in enumerate(other_shifts):
-#         # How to handle both shifts and time objects? Probably cannot -- separate functions!
-#         if time_check_shift(player_shift, other_shift):
-#             # on the ice together!
-#             indices.add(index)
-#     return indices
+
+def get_time_shared(curr_shift, other_shift):
+    """
+    Finds the shared min and shared max, and subtracts the two time objects
+    Returns the value in seconds (timedelta doesn't track minutes/hours)
+    """
+
+    lower_bound = max(curr_shift.start, other_shift.start)
+    upper_bound = min(curr_shift.end, other_shift.end)
+    temp = datetime.datetime.combine(datetime.date.today(), upper_bound) - datetime.datetime.combine(
+        datetime.date.today(), lower_bound)
+    return temp.seconds, lower_bound, upper_bound
