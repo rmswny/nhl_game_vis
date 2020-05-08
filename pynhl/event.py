@@ -6,23 +6,25 @@ class Event:
     Class handling all necessary attributes of an EVENT from the NHL Game Data API
     '''
 
-    def __init__(self, event_json):
+    def __init__(self, event_json, home, away):
         self.event_json = event_json
-        # Attributes from the JSON
         self.type_of_event = self.get_type()
-        self.players_direct_for = set()
-        self.players_direct_against = set()
-        self.players_on_for = set()
-        self.players_on_against = set()
+        self.players_on = {}  # Team : set(of players)
         self.team_of_player = self.get_team()
+        self.other_team = away if self.team_of_player == home else home
         self.period = self.get_period()
         self.time = self.get_time()
         self.x_loc = self.get_x()
         self.y_loc = self.get_y()
-        self.score = self.get_score()  # ([0],[1]) where 0 is the PLAYERS TEAMS SCORE
+        self.score = self.get_score()
         self.strength = 0
         # Null event_json after all necessary information is fetched, to save memory during runtime
+        self.players_involved = {home: set(), away: set()}
+        self.get_involved_players()  # Team : set(of players)
         self.event_json = None
+        # Features
+        self.time_since_last_event = None  # seconds
+        self.time_since_last_shot = None  # seconds
 
     def __lt__(self, other):
         if isinstance(other, Event):
@@ -52,9 +54,8 @@ class Event:
         return hash(self.type_of_event) + hash(self.period) + hash(self.time)
 
     def __str__(self):
-        return ("Player : {}, Team: {}, Event: {}, Period: {}, Time: {}, X : {}, Y: {}".format
-                (self.players_direct_for, self.team_of_player, self.type_of_event, self.period, self.time, self.x_loc,
-                 self.y_loc))
+        return (f"Team: {self.team_of_player}, "
+                f"Event: {self.type_of_event}, Time: {self.period}:{self.time}, X : {self.x_loc}, Y: {self.y_loc}")
 
     def __repr__(self):
         return self.__str__()
@@ -74,31 +75,41 @@ class Event:
         self.type_of_event = self.event_json["result"]["event"]
         return self.type_of_event
 
-    def get_players(self):
+    def get_involved_players(self):
         """
         Return the player who DID the event
         [0] is player who did the action, [1] is the player who received the action
         Missed shots do not have the 2nd player, goals/other shots do
         """
         if 'Blocked' in self.type_of_event:
-            # API Puts the person who blocked the shot, before the person who shot the shot
-            self.players_direct_for = [self.event_json['players'][1]['player']['fullName']]
-            self.players_direct_against = [self.event_json['players'][0]['player']['fullName']]
+            # Blocked shot is determined by WHO BLOCKS, and not who SHOT it
+            # We are reversing that, we care about the shooter, not the blocker
+            '''
+            When blocked shot occurs, the teams should be reversed
+            So self.team_of_player == shooter, other_team == blocker
+            '''
+            # Swap teams, blocked shot API is related to the blocker, not the shooter
+            self.team_of_player, self.other_team = self.other_team, self.team_of_player
+            self.players_involved[self.team_of_player].add(self.event_json['players'][1]['player']['fullName'])
+            self.players_involved[self.other_team].add(self.event_json['players'][0]['player']['fullName'])
         elif "Goal" in self.type_of_event:
-            self.players_direct_for = [x['player']['fullName'] for x in self.event_json['players'] if
-                                       "Goalie" not in x['playerType']]
-            self.players_direct_against = [x['player']['fullName'] for x in self.event_json['players'] if
-                                           "Goalie" in x['playerType']]
-        elif 'Missed' in self.type_of_event or 'Giveaway' in self.type_of_event or "Takeaway" in self.type_of_event \
-                or "Penalty" in self.type_of_event:
-            # Missed shots do not a second player tracked (goalie etc)
-            # Takeaways or Giveaways do not track who it was from / given to
-            self.players_direct_for, self.players_direct_against = [self.event_json['players'][0]['player'][
-                                                                        'fullName']], [None]
+            # A goal may have 0, 1 or 2 assists
+            for p in self.event_json['players']:
+                if p['player']['fullName'] in self.event_json['result']['description']:
+                    self.players_involved[self.team_of_player].add(p['player']['fullName'])
+                else:
+                    self.players_involved[self.other_team].add(p['player']['fullName'])
+        elif 'Missed' in self.type_of_event or 'Giveaway' in self.type_of_event or "Takeaway" in self.type_of_event:
+            # These three events involve only one player
+            self.players_involved[self.team_of_player].add(self.event_json['players'][0]['player']['fullName'])
         else:
-            # Shooter , Goalie, Hitter, Hittee
-            self.players_direct_for = [self.event_json['players'][0]['player']['fullName']]
-            self.players_direct_against = [self.event_json['players'][1]['player']['fullName']]
+            # Faceoff, Shot, Penalty, Hit
+            self.players_involved[self.team_of_player].add(self.event_json['players'][0]['player']['fullName'])
+            try:
+                self.players_involved[self.other_team].add(self.event_json['players'][1]['player']['fullName'])
+            except IndexError:
+                # Delay of game penalty, only one player involved here
+                print(self.event_json['result']['description'])
         return self
 
     def get_team(self):
@@ -106,8 +117,7 @@ class Event:
         Returns the team of the player who DID the event
         abbreviated (BUF) format not full (Buffalo Sabres)
         """
-        self.team_of_player = self.event_json['team']['triCode']
-        return self.team_of_player
+        return self.event_json['team']['triCode']
 
     def get_period(self):
         """
@@ -124,13 +134,11 @@ class Event:
         self.time = datetime.datetime.strptime(self.event_json['about']['periodTime'], "%M:%S").time()
         return self.time
 
-    def get_score(self, ):
+    def get_score(self):
         """
         Adds the score at the time of the event
         """
-        score_at_time_of_event = self.event_json['about']['goals']['home'], self.event_json['about']['goals']['away']
-        # score is relative to home team
-        return score_at_time_of_event[0] - score_at_time_of_event[1]
+        return self.event_json['about']['goals']['home'], self.event_json['about']['goals']['away']
 
     def get_x(self):
         """
@@ -146,27 +154,40 @@ class Event:
         self.y_loc = self.event_json['coordinates']['y']
         return self.y_loc
 
-    def determine_event_state(self, is_for_home_team):
+    def determine_event_state(self, home, away):
         """
-        Determines the number of skaters on for the event
+        Determines the number of skaters on for the event BASED ON HOME v AWAY
         6v5 / 5v5 / 4v4 / 5v4 / 4v3 / etc
-
-        is_for_home_team checks if PLAYER_DIRECT_FOR.TEAM == GAME.HOME_TEAM
-        if true -> for == home_team, false -> against == home_team
         """
-        if is_for_home_team:
-            self.strength = f"{len(self.players_on_for)}v{len(self.players_on_against)}"
-        else:
-            self.strength = f"{len(self.players_on_against)}v{len(self.players_on_for)}"
+        self.time_since_last_event
+        self.time_since_last_shot
+        self.strength = f"{len(self.players_on[home])}v{len(self.players_on[away])}"
         return self
 
-    def are_goalies_on(self, goalies):
+    def calculate_time_since_shot(self, events):
         """
-        Intersect the players on with the goalies in the game to determine which goalies are on the ice for the event
-        Used for establishing 5v5, 6v5 etc
+        Iterates in reverse order from events, finding hte first "SHOT" type
+        subtracts that time difference (if different periods, return will be -1)
+        Will also set the time_since_last_event category, it does all the leg work anyways
         """
-        players = set(self.players_on_for + self.players_on_against)
-        return goalies.intersection(players)
+        for e in reversed(events):
+            if not self.time_since_last_event:
+                if e.period == self.period:
+                    self.time_since_last_event = helpers.subtract_two_time_objects(e.time, self.time)
+                else:
+                    self.time_since_last_event = -1
+            if "Shot" in e.type_of_event or "Goal" in e.type_of_event:
+                if e.period == self.period:
+                    self.time_since_last_shot = helpers.subtract_two_time_objects(e.time, self.time)
+                else:
+                    self.time_since_last_shot = -1
+                break
+        #
+        if not self.time_since_last_shot:
+            self.time_since_last_shot = -1
+        if not self.time_since_last_event:
+            self.time_since_last_event = -1
+        return self
 
     def get_players_for_event(self, shifts_for_player):
         """
@@ -187,8 +208,7 @@ class Event:
         Helper function to assign player to the correct team
         Previous functions DETERMINE whether player SHOULD be added to event or not
         """
-        if team_of_player == self.team_of_player:
-            self.players_on_for.add(player_name)
-        else:
-            self.players_on_against.add(player_name)
+        if team_of_player not in self.players_on:
+            self.players_on[team_of_player] = set()
+        self.players_on[team_of_player].add(player_name)
         return self

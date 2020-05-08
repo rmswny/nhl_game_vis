@@ -2,7 +2,7 @@ from pynhl.event import Event
 from pynhl.player import Player
 from pynhl.shift import Shift
 import pynhl.helpers as helpers
-import bisect, numpy, pandas
+import bisect
 
 
 class Game:
@@ -45,10 +45,14 @@ class Game:
                     # Calculate the time between the two players in this function
                     self.get_time_together_between_two_players(self.players[player], self.players[other_player])
         # Testing function
-        for player in self.players:
-            t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
-                 in self.players[player].ice_time_with_players}
-            a = 5
+        # for player in self.players:
+        #     t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
+        #          in self.players[player].ice_time_with_players}
+        #     a = 5
+        '''
+        Now, what to do? All players have their friendly players assigned
+        Heat maps for the game?
+        '''
 
     def __str__(self):
         return f"Game ID: {self.game_id}, Season: {self.game_season}: {self.home_team} vs. {self.away_team} Final Score: {self.final_score}"
@@ -122,7 +126,7 @@ class Game:
         for curr_event in events:
             type_of_event = curr_event['result']['event']
             if type_of_event in helpers.TRACKED_EVENTS:
-                temp_event = Event(curr_event)
+                temp_event = Event(curr_event, self.home_team, self.away_team)
                 add_events(events_in_game, temp_event)
         return events_in_game
 
@@ -157,19 +161,21 @@ class Game:
         Function to find the players who are on ice for the event
         Alters event.strength based off number of players on for the event
         """
+        '''TODO:
+        While adding strength to each event, determine the time since previous event & shot (goal as well)
+        And also add the players on for each event as a dict
+            
+            TEAM:set(players)
+        
+        '''
         goalies = self.home_goalie.union(self.away_goalie)
         for i, event_to_parse in enumerate(self.events_in_game):
             for player in self.players:
                 if player not in goalies:
                     event_to_parse.get_players_for_event(self.players[player].shifts[self.game_id])
             # Based off players on the ice, determine the strength (5v5, 6v5 etc)
-            _on = len(event_to_parse.players_on_for) + len(event_to_parse.players_on_against)
-            # Error handling
-            if _on > 11 or _on < 9:
-                print(i, event_to_parse)
-                print(_on)
-            #
-            event_to_parse.determine_event_state(event_to_parse.team_of_player == self.home_team)
+            event_to_parse.determine_event_state(self.home_team, self.away_team)
+            event_to_parse.calculate_time_since_shot(self.events_in_game[:i])
         return self
 
     def get_time_together_between_two_players(self, player, other):
@@ -188,10 +194,6 @@ class Game:
                     # No need to check it twice
                     player.add_shared_toi(self.game_id, other.name, time_shared)
                     other.add_shared_toi(self.game_id, player.name, time_shared)
-        # Quick testing dict comprehension
-        t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
-             in self.players[player].ice_time_with_players}
-        a = 5
 
     # def determine_score_during_interval(self, shift, shared_start, shared_end, total_time_together):
     #     """
