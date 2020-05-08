@@ -12,11 +12,11 @@ class Player:
         self.shifts = {}  # [GameID] = [ Shifts in game ]
 
         # Counting metrics after fetching ALL game data
-        self.shifts_per_game = {}  # GameID:[shifts]
-        self.direct_events_for = []
-        self.direct_events_against = []
-        self.events_on_for = []
-        self.events_on_against = []
+        # self.shifts_per_game = {}  # GameID:[shifts]
+        # self.direct_events_for = []
+        # self.direct_events_against = []
+        # self.events_on_for = []
+        # self.events_on_against = []
 
         # {GameID}{Player Name} = [toi_by_shift]
         self.ice_time_with_players = {}

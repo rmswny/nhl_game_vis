@@ -44,15 +44,12 @@ class Game:
                             continue
                     # Calculate the time between the two players in this function
                     self.get_time_together_between_two_players(self.players[player], self.players[other_player])
+
         # Testing function
         # for player in self.players:
         #     t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
         #          in self.players[player].ice_time_with_players}
         #     a = 5
-        '''
-        Now, what to do? All players have their friendly players assigned
-        Heat maps for the game?
-        '''
 
     def __str__(self):
         return f"Game ID: {self.game_id}, Season: {self.game_season}: {self.home_team} vs. {self.away_team} Final Score: {self.final_score}"
@@ -191,7 +188,13 @@ class Game:
             if helpers.do_shifts_overlap(p_shift, closest_shift):
                 time_shared, lb, ub = helpers.get_time_shared(p_shift, closest_shift)
                 if time_shared > 0:
-                    # No need to check it twice
+                    '''
+                    Each second of the game has a current score and a game_state
+                    How to divide it inside the player class?
+                    self.ice_time_with_players[PLAYER_NAME][GAME_ID][STATE][SCORE]
+                    [3v3][3v4][3v5][3v6][4v3][4v4][4v5][4v6][5v3][5v4][5v5][5v6][6v3][6v4][6v5][6v6]
+                    [-10]...[10] - Score is RELATIVE to player's team (negative if trailing, positive if leading)
+                    '''
                     player.add_shared_toi(self.game_id, other.name, time_shared)
                     other.add_shared_toi(self.game_id, player.name, time_shared)
 
