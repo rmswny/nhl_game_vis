@@ -24,13 +24,13 @@ NOT_TRACKED_EVENTS = {
 }
 
 
-def subtract_two_time_objects(lhs, rhs):
+def subtract_two_time_objects(smaller, bigger):
     """
     Helper function to return the difference of two time objects in seconds
     """
-    lhs = datetime.datetime.combine(datetime.date.today(), lhs)
-    rhs = datetime.datetime.combine(datetime.date.today(), rhs)
-    difference = rhs - lhs
+    smaller = datetime.datetime.combine(datetime.date.today(), smaller)
+    bigger = datetime.datetime.combine(datetime.date.today(), bigger)
+    difference = bigger - smaller
     return difference.seconds
 
 
@@ -67,16 +67,16 @@ def time_check_event(event_time, shift_start_time, shift_end_time, event_=None):
     """
     Helper function to check whether an event was present during a shift
     """
-
     is_player_on = False
     if shift_start_time < event_time < shift_end_time:
         is_player_on = True
     elif shift_start_time == event_time and event_ not in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
-        # TODO: If start is time of event, then player was 100% on -- ?
-        # Start of shift is when event occurs
+        # Handles faceoffs, ignores penalties/goals/shots that caused a stoppage
         is_player_on = True
     elif shift_end_time == event_time and event_ in EVENTS_THAT_CAN_CAUSE_A_STOPPAGE:
-        # TODO: End of shift, but got credit for shot/something
+        # Penalties,goals will cause a stoppage. Player gets credit for being on the ice for that
+        # Shots can cause a stoppage, if a player's shift ended when the shot occurred.
+        # This conditional assumes a stoppage did occur
         is_player_on = True
     return is_player_on
 

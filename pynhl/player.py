@@ -1,6 +1,3 @@
-import numpy
-
-
 class Player:
     # Player will have shifts where each shift can have event(s)
     def __init__(self, player_json):
@@ -58,17 +55,23 @@ class Player:
             raise NotImplementedError
         return self.position
 
-    def add_shared_toi(self, game_id, other_player, time_shared):
+    def add_shared_toi(self, game_id, other_player, time_separated):
         """
         Adds time_shared, which is the time shared on a shift for self.player and other_player
 
         {Player}{Game_ID} = [ Each index is an int of seconds, each index is a shared value per shift ]
         """
+        # Add player name
         if other_player not in self.ice_time_with_players:
             self.ice_time_with_players[other_player] = {}
+
         if game_id not in self.ice_time_with_players[other_player]:
-            self.ice_time_with_players[other_player][game_id] = []
-        self.ice_time_with_players[other_player][game_id].append(time_shared)
+            self.ice_time_with_players[other_player][game_id] = {}  # strength : time in seconds
+
+        for strength, seconds in time_separated.items():
+            if strength not in self.ice_time_with_players[other_player][game_id]:
+                self.ice_time_with_players[other_player][game_id][strength] = 0
+            self.ice_time_with_players[other_player][game_id][strength] += seconds
         return self
 
     def retrieve_shifts_from_game(self, shifts_from_game):

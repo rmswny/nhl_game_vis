@@ -18,7 +18,7 @@ def print_profiler(profiler):
     Prints the contents of the profiler at the given time
     """
     prof_stream = StringIO()
-    stats_from_profiler = pstats.Stats(profiler, stream=prof_stream).sort_stats("cumtime")
+    stats_from_profiler = pstats.Stats(profiler, stream=prof_stream).sort_stats("tottime")
     stats_from_profiler.print_stats(20)
     return prof_stream.getvalue()
 

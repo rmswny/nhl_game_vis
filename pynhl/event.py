@@ -199,7 +199,7 @@ class Event:
         if finder != 0:
             finder -= 1
         shift_start = shifts_for_player[finder]
-        if helpers.time_check_event(self.time, shift_start.start, shift_start.end):
+        if helpers.time_check_event(self.time, shift_start.start, shift_start.end, self.type_of_event):
             self.assign_player_to_event(shift_start.player, shift_start.team)
         return self
 

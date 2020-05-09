@@ -2,7 +2,7 @@ from pynhl.event import Event
 from pynhl.player import Player
 from pynhl.shift import Shift
 import pynhl.helpers as helpers
-import bisect
+import bisect, datetime
 
 
 class Game:
@@ -23,14 +23,12 @@ class Game:
 
         self.players = self.assign_shifts_to_players()
         self.events_in_game = self.retrieve_events_in_game()
-        self.score_intervals = self.create_score_interval()
 
         # remove unnecessary data in memory before prolonged processing
         self.cleanup()
 
         # Extra functionality that doesn't require game/shift json
         self.add_strength_players_to_event()
-        self.strength_intervals = self.create_strength_intervals()
 
         # Determine how much time each player played with every other player
         for p_i, player in enumerate(self.players):
@@ -46,10 +44,11 @@ class Game:
                     self.get_time_together_between_two_players(self.players[player], self.players[other_player])
 
         # Testing function
-        # for player in self.players:
-        #     t = {p: helpers.seconds_to_minutes(sum(self.players[player].ice_time_with_players[p][self.game_id])) for p
-        #          in self.players[player].ice_time_with_players}
-        #     a = 5
+        for player in self.players:
+            for o in self.players[player].ice_time_with_players:
+                x = self.players[player].ice_time_with_players[o][self.game_id]
+                s_x = helpers.seconds_to_minutes(sum(x.values()))
+                a = 5
 
     def __str__(self):
         return f"Game ID: {self.game_id}, Season: {self.game_season}: {self.home_team} vs. {self.away_team} Final Score: {self.final_score}"
@@ -139,32 +138,12 @@ class Game:
             temp[goal.period][goal.time] = goal.score
         return temp
 
-    def create_strength_intervals(self):
-        """
-        Based off all the strengths in the game, find times where it changes throughout the game
-        """
-        temp = {}  # Time of state change : New state change
-        last_strength = self.events_in_game[0].strength
-        for e in self.events_in_game:
-            if e.strength != last_strength:
-                if e.period not in temp:
-                    temp[e.period] = {}
-                temp[e.period][e.time] = e.strength
-                last_strength = e.strength
-        return temp
-
     def add_strength_players_to_event(self):
         """
         Function to find the players who are on ice for the event
         Alters event.strength based off number of players on for the event
         """
-        '''TODO:
-        While adding strength to each event, determine the time since previous event & shot (goal as well)
-        And also add the players on for each event as a dict
-            
-            TEAM:set(players)
-        
-        '''
+        # TODO: When a penalty occurs, the play receiving the penalty should be included
         goalies = self.home_goalie.union(self.away_goalie)
         for i, event_to_parse in enumerate(self.events_in_game):
             for player in self.players:
@@ -188,46 +167,42 @@ class Game:
             if helpers.do_shifts_overlap(p_shift, closest_shift):
                 time_shared, lb, ub = helpers.get_time_shared(p_shift, closest_shift)
                 if time_shared > 0:
-                    '''
-                    Each second of the game has a current score and a game_state
-                    How to divide it inside the player class?
-                    self.ice_time_with_players[PLAYER_NAME][GAME_ID][STATE][SCORE]
-                    [3v3][3v4][3v5][3v6][4v3][4v4][4v5][4v6][5v3][5v4][5v5][5v6][6v3][6v4][6v5][6v6]
-                    [-10]...[10] - Score is RELATIVE to player's team (negative if trailing, positive if leading)
-                    '''
-                    player.add_shared_toi(self.game_id, other.name, time_shared)
-                    other.add_shared_toi(self.game_id, player.name, time_shared)
+                    values = self.separate_time_shared_by_strengths(lb, ub, time_shared, p_shift.period)
+                    player.add_shared_toi(self.game_id, other.name, values)
+                    other.add_shared_toi(self.game_id, player.name, values)
 
-    # def determine_score_during_interval(self, shift, shared_start, shared_end, total_time_together):
-    #     """
-    #     Given a start & end time, find the scores during the interval
-    #     Returns a list of scores during the shift interval
-    #     """
-    #     # Subsetting the original list
-    #     subset_start = bisect.bisect_left(self.events_in_game, shift.period)
-    #     subset_end = bisect.bisect_left(self.events_in_game, shift.period + 1)
-    #     start_index = bisect.bisect_right(self.events_in_game, shared_start, lo=subset_start, hi=subset_end)
-    #     end_index = bisect.bisect_right(self.events_in_game, shared_end, lo=subset_start, hi=subset_end)
-    #
-    #     # Gettin the time & values here
-    #     scores, strengths = {}, {}
-    #     if self.events_in_game[start_index:end_index]:
-    #         moving_lb = shared_start
-    #         # If there is at least one evnet during the shift interval
-    #         for e in self.events_in_game[start_index:end_index]:
-    #             if e.time > shared_end:
-    #                 break
-    #             # Grab the difference and the strength/score from the difference
-    #             time_diff = helpers.subtract_two_time_objects(moving_lb, e.time)
-    #             if e.score not in scores:
-    #                 scores[e.score] = 0
-    #             if e.strength not in strengths:
-    #                 strengths[e.strength] = 0
-    #             scores[e.score] += time_diff
-    #             strengths[e.strength] += time_diff
-    #
-    #     else:
-    #         # There are no events, grab the start_index -1 strength & scor enad the entire time shared
-    #         scores[self.events_in_game[start_index].score] = total_time_together
-    #         strengths[self.events_in_game[start_index].strength] = total_time_together
-    #     return scores, strengths
+    def separate_time_shared_by_strengths(self, lb, ub, time_shared, period):
+        """
+        Splits the time shared between two players on a shift (time_shared) by the intervals found in
+        self.strength_intervals
+        """
+        # Setup
+        strengths_during_shift = {}  # strength:seconds
+        per_index = bisect.bisect_left(self.events_in_game, period)
+        per_end = bisect.bisect_left(self.events_in_game, period + 1)
+        start = bisect.bisect_left(self.events_in_game, lb, lo=per_index, hi=per_end)
+        if start > 0:
+            start -= 1
+        end = bisect.bisect_left(self.events_in_game, ub, lo=per_index, hi=per_end)
+        if end < len(self.events_in_game):
+            end += 1
+
+        #
+        for event in self.events_in_game[start:end]:
+            # Add the strength no matter what
+            if event.strength not in strengths_during_shift:
+                strengths_during_shift[event.strength] = 0
+            #
+            if event.time < lb:
+                # keep moving on
+                last_str = event.strength
+                strengths_during_shift[last_str] = 0
+            elif event.time < ub:
+                diff = helpers.subtract_two_time_objects(lb, event.time)
+                # Set the new lower bound
+                lb = event.time
+                # Add the difference and on to the next
+                strengths_during_shift[event.strength] += diff
+        # Generate the remaining time here
+        strengths_during_shift[event.strength] += time_shared - sum(strengths_during_shift.values())
+        return {k: v for k, v in strengths_during_shift.items() if v != 0}
