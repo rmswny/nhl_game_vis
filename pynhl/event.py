@@ -159,8 +159,6 @@ class Event:
         Determines the number of skaters on for the event BASED ON HOME v AWAY
         6v5 / 5v5 / 4v4 / 5v4 / 4v3 / etc
         """
-        self.time_since_last_event
-        self.time_since_last_shot
         self.strength = f"{len(self.players_on[home])}v{len(self.players_on[away])}"
         return self
 

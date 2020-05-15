@@ -64,10 +64,10 @@ class Player:
         # Add player name
         if other_player not in self.ice_time_with_players:
             self.ice_time_with_players[other_player] = {}
-
+        # Add game to player's history games
         if game_id not in self.ice_time_with_players[other_player]:
             self.ice_time_with_players[other_player][game_id] = {}  # strength : time in seconds
-
+        # Add each strength to the player, in the game
         for strength, seconds in time_separated.items():
             if strength not in self.ice_time_with_players[other_player][game_id]:
                 self.ice_time_with_players[other_player][game_id][strength] = 0

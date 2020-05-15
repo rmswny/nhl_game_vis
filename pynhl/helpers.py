@@ -92,3 +92,17 @@ def get_time_shared(curr_shift, other_shift):
     temp = datetime.datetime.combine(datetime.date.today(), upper_bound) - datetime.datetime.combine(
         datetime.date.today(), lower_bound)
     return temp.seconds, lower_bound, upper_bound
+
+
+def swap_states(states_dict):
+    """
+    Swaps the string held in the keys of states_dict
+    Before: {5v4:INT} After: {4v5:INT}
+    """
+    temp = {f"{k[2]}{k[1]}{k[0]}": v for k, v in states_dict.items()}
+    return {f"{k[2]}{k[1]}{k[0]}": v for k, v in states_dict.items()}
+    # for key, value in states_dict.items():
+    #     # Each key is a 3 char string, []v[]
+    #     temp_key = f"{key[2]}{key[1]}{key[0]}"
+    #     temp[temp_key] = value
+    # return temp

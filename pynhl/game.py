@@ -7,8 +7,10 @@ import bisect, datetime
 
 class Game:
     # Game will have Players who will have shifts and each shift can have event(s)
+
+    # Edit for reading a JSON input or a CSV one
     def __init__(self, game_json, shift_json):
-        # Basic game information
+        # Basic game information provided by the API
         self.game_json = game_json
         self.shift_json = shift_json
         self.game_id = self.game_json['gameData']['game']['pk']
@@ -47,7 +49,7 @@ class Game:
         for player in self.players:
             for o in self.players[player].ice_time_with_players:
                 x = self.players[player].ice_time_with_players[o][self.game_id]
-                s_x = helpers.seconds_to_minutes(sum(x.values()))
+                s_x = [helpers.seconds_to_minutes(y) for y in x.values()]
                 a = 5
 
     def __str__(self):
@@ -154,6 +156,13 @@ class Game:
             event_to_parse.calculate_time_since_shot(self.events_in_game[:i])
         return self
 
+    def get_period_range_in_events_list(self, period_to_find):
+        temp = {}
+        if period_to_find not in temp:
+            per_index = bisect.bisect_left(self.events_in_game, period_to_find)
+            per_end = bisect.bisect_left(self.events_in_game, period_to_find + 1)
+            return (per_index, per_end)
+
     def get_time_together_between_two_players(self, player, other):
         """
         For each player in the game, find their teammates & opposition for
@@ -164,39 +173,55 @@ class Game:
             if i == len(other.shifts[self.game_id]):
                 i -= 1
             closest_shift = other.shifts[self.game_id][i]
+            period_ranges = {}
             if helpers.do_shifts_overlap(p_shift, closest_shift):
-                time_shared, lb, ub = helpers.get_time_shared(p_shift, closest_shift)
+                time_shared, time_lb, time_ub = helpers.get_time_shared(p_shift, closest_shift)
                 if time_shared > 0:
-                    values = self.separate_time_shared_by_strengths(lb, ub, time_shared, p_shift.period)
-                    player.add_shared_toi(self.game_id, other.name, values)
-                    other.add_shared_toi(self.game_id, player.name, values)
+                    if p_shift.period not in period_ranges:
+                        period_ranges[p_shift.period] = self.get_period_range_in_events_list(p_shift.period)
+                    values = self.separate_time_shared_by_strengths(time_lb, time_ub, time_shared,
+                                                                    period_ranges[p_shift.period][0],
+                                                                    period_ranges[p_shift.period][1])
+                    swapped = helpers.swap_states(values)
+                    # TODO: Think of better location for this function, ugly
+                    if player.team == self.away_team:
+                        player.add_shared_toi(self.game_id, other.name, swapped)
+                    else:
+                        player.add_shared_toi(self.game_id, other.name, values)
+                    if other.team == self.away_team:
+                        other.add_shared_toi(self.game_id, player.name, swapped)
+                    else:
+                        other.add_shared_toi(self.game_id, player.name, values)
 
-    def separate_time_shared_by_strengths(self, lb, ub, time_shared, period):
+    def separate_time_shared_by_strengths(self, lb, ub, time_shared, low_i, high_i):
         """
         Splits the time shared between two players on a shift (time_shared) by the intervals found in
         self.strength_intervals
+
+        lb / ub refer to the interval shared by the two players, a time between 00:00 and 19:59
+        low_i/high_i refer to the start and end index for a given period in the game
         """
-        # Setup
-        strengths_during_shift = {}  # strength:seconds
-        per_index = bisect.bisect_left(self.events_in_game, period)
-        per_end = bisect.bisect_left(self.events_in_game, period + 1)
-        start = bisect.bisect_left(self.events_in_game, lb, lo=per_index, hi=per_end)
+
+        start = bisect.bisect_left(self.events_in_game, lb, low_i, high_i)
         if start > 0:
             start -= 1
-        end = bisect.bisect_left(self.events_in_game, ub, lo=per_index, hi=per_end)
+        end = bisect.bisect_left(self.events_in_game, ub, low_i, high_i)
         if end < len(self.events_in_game):
             end += 1
-
         #
+        prev_strength = self.events_in_game[start].strength
+        strengths_during_shift = {prev_strength: 0}  # strength:seconds
         for event in self.events_in_game[start:end]:
-            # Add the strength no matter what
+            # Break immediately, don't care about any events anymore
+            if event.time > ub:
+                break
+            # Add strength to dict
             if event.strength not in strengths_during_shift:
                 strengths_during_shift[event.strength] = 0
-            #
             if event.time < lb:
-                # keep moving on
-                last_str = event.strength
-                strengths_during_shift[last_str] = 0
+                # Gets the strength just before the beginning of the shift
+                prev_strength = event.strength
+                strengths_during_shift[prev_strength] = 0
             elif event.time < ub:
                 diff = helpers.subtract_two_time_objects(lb, event.time)
                 # Set the new lower bound
@@ -204,5 +229,17 @@ class Game:
                 # Add the difference and on to the next
                 strengths_during_shift[event.strength] += diff
         # Generate the remaining time here
-        strengths_during_shift[event.strength] += time_shared - sum(strengths_during_shift.values())
+        '''
+        event.strength shouldn't be used, what's the alternative?
+        Assignment is taking the last strength and and finding the difference between the remaining time left and whats
+        already been assigned to the two players
+        
+        But by taking the iterated event assumes that the event was one during their time together, when that isn't true
+        
+        So, use last strength in strengths_during_shift instead?
+            Fine, but what if empty?
+                If empty, self.events[start].strength should be used?
+        '''
+        strengths_during_shift[prev_strength] += time_shared - sum(strengths_during_shift.values())
+        # Ignoring strengths with a time of 0
         return {k: v for k, v in strengths_during_shift.items() if v != 0}
