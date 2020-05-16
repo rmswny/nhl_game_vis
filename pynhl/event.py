@@ -18,6 +18,10 @@ class Event:
         self.y_loc = self.get_y()
         self.score = self.get_score()
         self.strength = 0
+        try:
+            self.penalty_duration = event_json['result']['penaltyMinutes'] * 60
+        except KeyError:
+            self.penalty_duration = None
         # Null event_json after all necessary information is fetched, to save memory during runtime
         self.players_involved = {home: set(), away: set()}
         self.get_involved_players()  # Team : set(of players)
@@ -25,6 +29,10 @@ class Event:
         # Features
         self.time_since_last_event = None  # seconds
         self.time_since_last_shot = None  # seconds
+        '''
+        Flip coordinates for HOME and AWAY differences (so the player graph cna use it asap)
+        Calculate distance to center of goal from X/Y for each event
+        '''
 
     def __lt__(self, other):
         if isinstance(other, Event):

@@ -52,7 +52,6 @@ def save_json_data(json_data, is_game, game_num, game_dir='games/', shift_dir='s
         json.dump(json_data, of, ensure_ascii=False, indent=4)
 
 
-
 def get_json_data(url):
     '''
     Function to retrieve game data from NHL API
@@ -76,13 +75,5 @@ if __name__ == "__main__":
 
     curr_game_shifts = read_json_data(NHL_GAME_NUM, is_game=False)
     curr_game = read_json_data(NHL_GAME_NUM)
-    players = []
-    
-    '''
-    Should a list of players be maintained here
-    Where each player has a Shifts separated by GameIDs
-    And those shifts have teammate data / event data stored in them
-    '''
     parsed_game = Game(curr_game, curr_game_shifts)
     print(print_profiler(profiler))
-

@@ -50,10 +50,11 @@ class Game:
             for o in self.players[player].ice_time_with_players:
                 x = self.players[player].ice_time_with_players[o][self.game_id]
                 s_x = [helpers.seconds_to_minutes(y) for y in x.values()]
+                s_xx = helpers.seconds_to_minutes(sum([int(x) for x in x.values()]))
                 a = 5
 
     def __str__(self):
-        return f"Game ID: {self.game_id}, Season: {self.game_season}: {self.home_team} vs. {self.away_team} Final Score: {self.final_score}"
+        return f"{self.home_team} vs.{self.away_team} Final Score:{self.final_score}"
 
     def __repr__(self):
         return self.__str__()
@@ -128,22 +129,9 @@ class Game:
                 add_events(events_in_game, temp_event)
         return events_in_game
 
-    def create_score_interval(self):
-        """
-        Based off all the goals in the game, create a range of times during the score
-        """
-        temp = {}  # Time of goal (Per:Time) : Score
-        goals = (g for g in self.events_in_game if "Goal" in g.type_of_event)
-        for goal in goals:
-            if goal.period not in temp:
-                temp[goal.period] = {}
-            temp[goal.period][goal.time] = goal.score
-        return temp
-
     def add_strength_players_to_event(self):
         """
-        Function to find the players who are on ice for the event
-        Alters event.strength based off number of players on for the event
+        Function to find the players who are on ice for each event in the game
         """
         # TODO: When a penalty occurs, the play receiving the penalty should be included
         goalies = self.home_goalie.union(self.away_goalie)
@@ -179,10 +167,9 @@ class Game:
                 if time_shared > 0:
                     if p_shift.period not in period_ranges:
                         period_ranges[p_shift.period] = self.get_period_range_in_events_list(p_shift.period)
-                    values = self.separate_time_shared_by_strengths(time_lb, time_ub, time_shared,
-                                                                    period_ranges[p_shift.period][0],
-                                                                    period_ranges[p_shift.period][1])
-                    swapped = helpers.swap_states(values)
+                    values, swapped = self.separate_time_shared_by_strengths(time_lb, time_ub, time_shared,
+                                                                             period_ranges[p_shift.period][0],
+                                                                             period_ranges[p_shift.period][1])
                     # TODO: Think of better location for this function, ugly
                     if player.team == self.away_team:
                         player.add_shared_toi(self.game_id, other.name, swapped)
@@ -210,36 +197,45 @@ class Game:
             end += 1
         #
         prev_strength = self.events_in_game[start].strength
+        pen_start = None
         strengths_during_shift = {prev_strength: 0}  # strength:seconds
+        '''
+        Need to accurately account for penalty time
+        Penalties last TWO to FOUR minutes
+        '''
         for event in self.events_in_game[start:end]:
             # Break immediately, don't care about any events anymore
             if event.time > ub:
                 break
             # Add strength to dict
+            if "Penalty" in event.type_of_event:
+                pen_start = event.time
+                pen_end = helpers.add_minutes_to_time(pen_start, (event.penalty_duration // 60))
             if event.strength not in strengths_during_shift:
                 strengths_during_shift[event.strength] = 0
             if event.time < lb:
                 # Gets the strength just before the beginning of the shift
                 prev_strength = event.strength
-                strengths_during_shift[prev_strength] = 0
+            # All the work done in here
             elif event.time < ub:
                 diff = helpers.subtract_two_time_objects(lb, event.time)
                 # Set the new lower bound
                 lb = event.time
                 # Add the difference and on to the next
+                '''
+                Handle the case when their shifts and a penalty was on during the ice
+                10:34 -> 12:34 , shift ends a little bit after that
+                If there are no events after 12:34, what to do?
+                Get remaining total time (already done that)
+                Take that number, subtract it from pen_end and lb
+                That becomes the PP numbers
+                Remaining time is the remaining time
+                '''
                 strengths_during_shift[event.strength] += diff
+                a = 5
+
         # Generate the remaining time here
-        '''
-        event.strength shouldn't be used, what's the alternative?
-        Assignment is taking the last strength and and finding the difference between the remaining time left and whats
-        already been assigned to the two players
-        
-        But by taking the iterated event assumes that the event was one during their time together, when that isn't true
-        
-        So, use last strength in strengths_during_shift instead?
-            Fine, but what if empty?
-                If empty, self.events[start].strength should be used?
-        '''
         strengths_during_shift[prev_strength] += time_shared - sum(strengths_during_shift.values())
-        # Ignoring strengths with a time of 0
-        return {k: v for k, v in strengths_during_shift.items() if v != 0}
+        # Returns the home v away and away v home versions for the case of teammate / teammate and teammate / opposition
+        return {k: v for k, v in strengths_during_shift.items() if v != 0}, {f"{k[2]}{k[1]}{k[0]}": v for k, v in
+                                                                             strengths_during_shift.items()}

@@ -24,6 +24,13 @@ NOT_TRACKED_EVENTS = {
 }
 
 
+def add_minutes_to_time(_time, minutes_to_add):
+    """
+    Add an integer value of minutes to an existing time object
+    """
+    return (datetime.datetime.combine(datetime.date.today(), _time) + datetime.timedelta(minutes=minutes_to_add)).time()
+
+
 def subtract_two_time_objects(smaller, bigger):
     """
     Helper function to return the difference of two time objects in seconds
@@ -36,17 +43,14 @@ def subtract_two_time_objects(smaller, bigger):
 
 def seconds_to_minutes(seconds):
     """
-    Takes an int input (seconds) and converts to time() object of minutes/seconds
-    NHL does not deal with hours so ignoring this functionality
+    Converts a number of seconds (int) to a pretty-string of minutes
+    55 -> 0:55
     """
-    if isinstance(seconds, int):
-        minutes = seconds // 60
-        seconds = seconds - (minutes * 60)
-        if seconds < 10:
-            seconds = f"0{seconds}"
-        return f"{minutes}:{seconds}"
-    else:
-        raise SystemExit("Incorrect type for function, must be int")
+    minutes = seconds // 60
+    seconds = seconds - (minutes * 60)
+    if seconds < 10:
+        seconds = f"0{seconds}"
+    return f"{minutes}:{seconds}"
 
 
 def do_shifts_overlap(baseline, other):
@@ -99,10 +103,4 @@ def swap_states(states_dict):
     Swaps the string held in the keys of states_dict
     Before: {5v4:INT} After: {4v5:INT}
     """
-    temp = {f"{k[2]}{k[1]}{k[0]}": v for k, v in states_dict.items()}
     return {f"{k[2]}{k[1]}{k[0]}": v for k, v in states_dict.items()}
-    # for key, value in states_dict.items():
-    #     # Each key is a 3 char string, []v[]
-    #     temp_key = f"{key[2]}{key[1]}{key[0]}"
-    #     temp[temp_key] = value
-    # return temp
